@@ -141,7 +141,18 @@ async function viewPersonDetail(id) {
 	].filter(r => r[1]);
 	const grid = h('dl', { class: 'lr-facts' },
 		...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))]));
-	const actions = ME.caps['persons.write'] ? [h('button', { class: 'lr-btn', onclick: () => viewPersonForm(p) }, _t('Edit'))] : [];
+	const actions = [];
+	if (ME.caps['persons.write']) actions.push(h('button', { class: 'lr-btn', onclick: () => viewPersonForm(p) }, _t('Edit')));
+	if (p.status !== 'ehemalig' && ME.caps['persons.write']) actions.push(h('button', { class: 'lr-btn quiet', onclick: async () => {
+		if (!confirm(_t('Archive {name}? The person is kept with status “ehemalig” and can be restored by editing.', { name: p.first_name + ' ' + p.last_name }))) return;
+		try { await api('/persons/' + id, { method: 'PUT', json: { status: 'ehemalig' } }); toast(_t('Archived'), false); go('#/adressen'); }
+		catch (e) { toast(e.message); }
+	} }, _t('Archive')));
+	if (p.status === 'ehemalig' && ME.caps['persons.delete']) actions.push(h('button', { class: 'lr-btn quiet', onclick: async () => {
+		if (!confirm(_t('Permanently delete {name}? Linked records (finances, events, trainings) lose their person reference. This cannot be undone.', { name: p.first_name + ' ' + p.last_name }))) return;
+		try { await api('/persons/' + id, { method: 'DELETE' }); toast(_t('Deleted'), false); go('#/adressen'); }
+		catch (e) { toast(e.message); }
+	} }, _t('Delete')));
 	const nodes = [lrPageHeader({ kicker: _t('Leiterrunde · People'), title: p.first_name + ' ' + p.last_name, lede: BADGE_LABELS[p.status] || p.status, actions }), grid];
 	// Schulungsstatus (Modul-App, wenn aktiviert)
 	try {

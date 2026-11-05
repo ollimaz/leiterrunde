@@ -229,7 +229,12 @@
         "Navigation": "Navigation",
         "No people found.": "Keine Personen gefunden.",
         "No birthdays in this period.": "Keine Geburtstage in diesem Zeitraum.",
-        "Search": "Suche"
+        "Delete": "Löschen",
+        "Deleted": "Gelöscht",
+        "Archive": "Archivieren",
+        "Archived": "Archiviert",
+        "Archive {name}? The person is kept with status “ehemalig” and can be restored by editing.": "{name} archivieren? Die Person bleibt mit Status „ehemalig“ erhalten und kann durch Bearbeiten wiederhergestellt werden.",
+        "Permanently delete {name}? Linked records (finances, events, trainings) lose their person reference. This cannot be undone.": "{name} endgültig löschen? Verknüpfte Einträge (Finanzen, Veranstaltungen, Schulungen) verlieren ihre Personenzuordnung. Dies kann nicht rückgängig gemacht werden."
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

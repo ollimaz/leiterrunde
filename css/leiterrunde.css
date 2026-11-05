@@ -43,6 +43,7 @@
 .lr#leiterrunde-app, .lr #leiterrunde-app { display: flex; height: 100%; width: 100%; }
 .lr #app-navigation { flex-shrink: 0; border-right: 1px solid var(--color-border); }
 .lr #app-content { flex: 1; min-width: 0; padding: 24px 32px; }
+.lr #lr-view { overflow-x: auto; }
 @media (max-width: 1024px) { .lr #app-content { padding: 16px 20px 16px 56px; } }
 @media (max-width: 480px) { .lr #app-content { padding: 12px 16px 12px 52px; } }
 
@@ -89,6 +90,7 @@
 .lr .lr-grid > .lr-section {
 	border: 1px solid var(--color-border); border-radius: var(--border-radius-container);
 	background: var(--color-main-background); padding: 14px 16px 16px; min-width: 0;
+	overflow-x: auto;
 }
 .lr .lr-section .lr-section-title { font-size: 14px; font-weight: 600; margin: 2px 0 10px; }
 .lr .lr-grid .lr-table { border: 0; background: transparent; }

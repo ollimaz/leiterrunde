@@ -30,12 +30,10 @@
 	</background-jobs>
 	<repair-steps>
 		<install>
-			<step>OCA\Leiterrunde\Migration\CreateGroups</step>
 			<step>OCA\Leiterrunde\Migration\MigrateNotifyRoles</step>
 			<step>OCA\Leiterrunde\Migration\DeriveBirthYear</step>
 		</install>
 		<post-migration>
-			<step>OCA\Leiterrunde\Migration\CreateGroups</step>
 			<step>OCA\Leiterrunde\Migration\MigrateNotifyRoles</step>
 			<step>OCA\Leiterrunde\Migration\DeriveBirthYear</step>
 		</post-migration>
