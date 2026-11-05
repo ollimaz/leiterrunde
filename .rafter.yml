@@ -1,0 +1,4 @@
+ignore:
+  - paths: ["js/leiterrunde.mjs"]
+    rules: ["R-BFBD0"]
+    reason: "SPA route guard: location.hash is compared to a route constant for client-side navigation — no secret material is involved, so timing attacks do not apply."
