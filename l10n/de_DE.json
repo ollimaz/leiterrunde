@@ -232,7 +232,8 @@
         "Archive": "Archivieren",
         "Archived": "Archiviert",
         "Archive {name}? The person is kept with status “ehemalig” and can be restored by editing.": "{name} archivieren? Die Person bleibt mit Status „ehemalig“ erhalten und kann durch Bearbeiten wiederhergestellt werden.",
-        "Permanently delete {name}? Linked records (finances, events, trainings) lose their person reference. This cannot be undone.": "{name} endgültig löschen? Verknüpfte Einträge (Finanzen, Veranstaltungen, Schulungen) verlieren ihre Personenzuordnung. Dies kann nicht rückgängig gemacht werden."
+        "Permanently delete {name}? Linked records (finances, events, trainings) lose their person reference. This cannot be undone.": "{name} endgültig löschen? Verknüpfte Einträge (Finanzen, Veranstaltungen, Schulungen) verlieren ihre Personenzuordnung. Dies kann nicht rückgängig gemacht werden.",
+        "The “Leiterrunde” app must be enabled.": "Die App „Leiterrunde“ muss aktiviert sein."
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

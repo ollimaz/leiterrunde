@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\Leiterrunde\Service;
 
 use OCA\Leiterrunde\AppInfo\Application;
+use OCA\Leiterrunde\Db\PersonMapper;
 use OCA\Leiterrunde\Exception\ApiException;
 use OCA\Leiterrunde\Exception\NotFoundException;
 use OCA\Leiterrunde\Module\ModuleRegistry;
@@ -55,6 +56,18 @@ class DocumentStorageService {
 			$v = '_';
 		}
 		return $v;
+	}
+
+	/** Standard path-template variables for a person's documents; callers merge their extras. */
+	public function personVars(PersonMapper $personMapper, int $personId): array {
+		$person = null;
+		try { $person = $personMapper->find($personId); } catch (\Throwable) {}
+		$now = new \DateTimeImmutable();
+		return [
+			'jahr' => $now->format('Y'), 'monat' => $now->format('m'), 'datum' => $now->format('Y-m-d'),
+			'vorname' => $person?->getFirstName() ?? '', 'nachname' => $person?->getLastName() ?? '',
+			'id' => (string)$personId,
+		];
 	}
 
 	/** Platzhalter ersetzen + Template-Segmente validieren. */

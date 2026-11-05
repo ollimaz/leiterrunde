@@ -126,6 +126,28 @@ class PermissionService {
 		return $user;
 	}
 
+	/** Caller may view the record if they own it or hold the read-all capability. @throws ForbiddenException */
+	public function assertRecordView(int $personId, string $readAllCap): void {
+		if ($this->has($readAllCap)) {
+			return;
+		}
+		$own = $this->currentPerson();
+		if ($own !== null && $own->getId() === $personId) {
+			return;
+		}
+		throw new ForbiddenException('No permission');
+	}
+
+	/** Owner may mutate their own pending record; anything else requires the approve/decide capability. @throws ForbiddenException */
+	public function assertRecordMutation(int $personId, ?string $createdBy, string $status, string $approveCap): void {
+		$own = $this->currentPerson();
+		$isOwn = $own !== null && $own->getId() === $personId
+			&& $createdBy === $this->requireLoggedIn()->getUID();
+		if (!$isOwn || $status !== 'pending') {
+			$this->require($approveCap);
+		}
+	}
+
 	/** @return string[] member uids of a group */
 	public function groupMembers(string $gid): array {
 		$group = $this->groupManager->get($gid);
