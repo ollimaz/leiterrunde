@@ -30,7 +30,7 @@
 
 .lr .lr-overline { font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-maxcontrast); }
 .lr .lr-display { font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -.01em; margin: 0; }
-.lr h2, .lr .lr-h2 { font-size: 16px; line-height: 22px; font-weight: 600; margin: 0 0 4px; }
+.lr h2 { font-size: 16px; line-height: 22px; font-weight: 600; margin: 0 0 4px; }
 .lr .lr-subhead { font-size: 15px; font-weight: 600; margin: 28px 0 12px; padding-top: 20px; border-top: 1px solid var(--color-border); }
 .lr .lr-figure-xl { font-size: 26px; line-height: 32px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: lining-nums tabular-nums; }
 .lr .lr-figure-m { font-size: 15px; font-weight: 600; font-variant-numeric: lining-nums tabular-nums; }
@@ -191,8 +191,6 @@
 .lr input[readonly] { background: var(--color-background-hover); border-color: var(--color-border); }
 .lr input[type=checkbox], .lr input[type=radio] { accent-color: var(--color-primary-element); width: 16px; height: 16px; }
 .lr select { appearance: none; padding-right: 32px; cursor: pointer; }
-.lr .lr-helptext { font-size: var(--font-size-small); color: var(--color-text-maxcontrast); margin-top: 4px; }
-.lr .lr-errtext { font-size: var(--font-size-small); color: var(--color-element-error); margin: 4px 0; }
 
 .lr .lr-search { display: flex; gap: 8px; align-items: center; margin: 0 0 16px; flex-wrap: wrap; }
 .lr .lr-search input[type=search] { max-width: 300px; }
@@ -272,16 +270,13 @@
 .lr-toast.error { border-left-color: var(--color-element-error); }
 
 .lr .lr-empty { color: var(--color-text-maxcontrast); padding: 20px 0; font-size: var(--default-font-size); }
-.lr .lr-loading { display: flex; align-items: center; gap: 8px; color: var(--color-text-maxcontrast); padding: 12px 0; }
-.lr .lr-loading::before { content: ''; width: 16px; height: 16px; border: 2px solid var(--color-border-dark); border-top-color: var(--color-primary-element); border-radius: 50%; animation: lr-spin .8s linear infinite; flex: none; }
-@keyframes lr-spin { to { transform: rotate(360deg); } }
 
 .lr .lr-skel { padding: 12px 0; }
 .lr .lr-skel .lr-skel-line { height: 14px; border-radius: var(--border-radius-element); margin-bottom: 12px; background: linear-gradient(90deg, var(--color-background-dark) 25%, var(--color-background-hover) 50%, var(--color-background-dark) 75%); background-size: 200% 100%; animation: lr-skel 1.4s ease infinite; }
 .lr .lr-skel .lr-skel-line.lr-skel-title { height: 20px; width: 40%; margin-bottom: 20px; }
 .lr .lr-skel .lr-skel-line:last-child { width: 65%; }
 @keyframes lr-skel { to { background-position: -200% 0; } }
-@media (prefers-reduced-motion: reduce) { .lr .lr-skel .lr-skel-line, .lr .lr-loading::before { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .lr .lr-skel .lr-skel-line { animation: none; } }
 
 /* icons */
 .lr .lr-ico { display: inline-flex; width: 18px; height: 18px; }
@@ -290,7 +285,6 @@
 /* ---------- misc ---------- */
 
 .lr .lr-legend { font-size: var(--font-size-small); color: var(--color-main-text); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
-.lr .lr-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .lr .settings-hint { color: var(--color-text-maxcontrast); font-size: var(--font-size-small); }
 .lr .lr-ok { color: var(--color-element-success); }
 .lr .lr-err { color: var(--color-element-error); }
@@ -299,7 +293,7 @@
 .lr .lr-docpath, .lr .lr-path { font-family: var(--lr-mono); font-size: 13px; max-width: 480px; }
 .lr .lr-path-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .lr .lr-path-row select { max-width: 260px; }
-.lr .lr-table select, .lr select.lr-assign { max-width: 260px; min-height: 32px; height: 32px; border-width: 1px; padding: 0 28px 0 10px; }
+.lr .lr-table select { max-width: 260px; min-height: 32px; height: 32px; border-width: 1px; padding: 0 28px 0 10px; }
 
 /* ---------- settings: role matrix, role list ---------- */
 
@@ -324,4 +318,4 @@
 @media (max-width: 760px) { .lr .lr-rolerow { grid-template-columns: 1fr; gap: 6px; } }
 
 /* inline selects inside rows */
-.lr .lr-table select, .lr select.lr-assign { border-width: 1px; }
+.lr .lr-table select { border-width: 1px; }

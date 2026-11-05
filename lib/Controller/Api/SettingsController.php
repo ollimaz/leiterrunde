@@ -172,18 +172,4 @@ class SettingsController extends ApiController {
 		}
 		return $warnings;
 	}
-
-	public function fzWarning(): JSONResponse {
-		return $this->wrap(function () {
-			$this->perm->require('settings.manage');
-			$members = $this->perm->groupMembers(PermissionService::G_FZ);
-			$warning = null;
-			if (count($members) > 1) {
-				$warning = 'The leiterrunde_fz group has more than one member. For data privacy, only one person should have access to certificate-of-conduct data.';
-			} elseif (count($members) === 0) {
-				$warning = 'The leiterrunde_fz group has no member. Without a member nobody can maintain certificates of conduct.';
-			}
-			return ['member_count' => count($members), 'members' => $members, 'warning' => $warning];
-		});
-	}
 }
