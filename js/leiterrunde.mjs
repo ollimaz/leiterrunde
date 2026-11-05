@@ -279,6 +279,7 @@ function importCsv() {
 		try {
 			const res = await api('/persons/import', { method: 'POST', body: fd });
 			toast(_t('Import: {created} new, {updated} updated, {skipped} skipped', { created: res.created, updated: res.updated, skipped: res.skipped }) + (res.errors.length ? ', ' + res.errors.length + ' ' + _t('Error') : ''), res.errors.length > 0);
+			route();
 		} catch (e) { toast(e.message); }
 	});
 	input.click();
