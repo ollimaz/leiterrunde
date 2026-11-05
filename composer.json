@@ -1,0 +1,10 @@
+{
+	"name": "leiterrunde/leiterrunde",
+	"description": "Interne Verwaltungs-App der Leiterrunde",
+	"license": "AGPL-3.0-or-later",
+	"autoload": {
+		"psr-4": {
+			"OCA\\Leiterrunde\\": "lib/"
+		}
+	}
+}
