@@ -42,7 +42,7 @@ class MeController extends ApiController {
 				'isNcAdmin' => $this->perm->isNcAdmin(),
 				'caps' => $this->perm->caps(),
 				'modules' => array_values(array_filter(
-					['leiterrunde_schulungen', 'leiterrunde_finanzen', 'leiterrunde_veranstaltungen'],
+					['leiterrunde_schulungen', 'leiterrunde_finanzen', 'leiterrunde_veranstaltungen', 'leiterrunde_messdienerplan'],
 					fn ($a) => $this->appManager->isEnabledForAnyone($a))),
 				'person' => $person?->jsonSerialize(),
 			];
