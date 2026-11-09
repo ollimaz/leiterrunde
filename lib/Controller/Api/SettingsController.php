@@ -77,7 +77,7 @@ class SettingsController extends ApiController {
 				'roles' => RoleService::ROLES,
 				'role_groups' => $this->roles->roleGroups(),
 				'role_caps' => $this->roles->capRoles(),
-				'capabilities' => array_map(static fn ($c) => ['id' => $c->id, 'label' => $c->label, 'group' => $c->group, 'locked' => $c->lockedToRoles], $this->modules->capabilities()),
+				'capabilities' => array_map(static fn ($c) => ['id' => $c->id, 'label' => $c->label, 'group' => $c->group, 'locked' => $c->lockedToRoles, 'defaults' => $c->defaultRoles], $this->modules->capabilities()),
 				'warnings' => $this->roleWarnings(),
 			];
 		});

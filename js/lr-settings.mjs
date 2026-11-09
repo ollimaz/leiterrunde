@@ -125,6 +125,9 @@ async function rolesPage() {
 		for (const c of data.capabilities) {
 			if (c.locked) { role_caps[c.id] = c.locked; continue; }
 			role_caps[c.id] = [...roleIds, 'any'].filter(r => cb[c.id + ':' + r].checked);
+			if ((c.defaults || []).includes('nca') || (data.role_caps[c.id] || []).includes('nca')) {
+				role_caps[c.id].push('nca');
+			}
 		}
 		try {
 			await cap('/settings/roles', { method: 'PUT', json: { role_groups, role_caps } });
@@ -133,11 +136,11 @@ async function rolesPage() {
 	};
 	const restoreBtn = h('button', { class: 'lr-btn secondary', onclick: () => {
 		for (const c of data.capabilities) {
-			for (const r of [...roleIds, 'any']) cb[c.id + ':' + r].checked = (c.locked ? c.locked : (defaults[c.id] || [])).includes(r);
+			for (const r of [...roleIds, 'any']) cb[c.id + ':' + r].checked = (c.locked ? c.locked : (c.defaults || [])).includes(r);
 		}
 		msg(msgEl, true, _t('Reset to defaults – the change takes effect only after "Save"'));
 	} }, _t('Restore defaults'));
-	const mainSave = root.querySelector('button.primary');
+	const mainSave = document.getElementById('lr-roles-save');
 	if (mainSave) mainSave.addEventListener('click', save);
 	root.append(h('p', {}, restoreBtn, msgEl));
 }
