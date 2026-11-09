@@ -11,7 +11,7 @@
 	<summary>Management of people, training, finances and events for the leader team</summary>
 	<summary lang="de">Verwaltung von Adressen, Schulungen, Finanzen und Veranstaltungen für die Leiterrunde</summary>
 	<description><![CDATA[Interne Verwaltungs-App der Leiterrunde: Adressen, Schulungsnachweise (inkl. Führungszeugnisse), Finanzen (Kontoauszüge, Zahlungsverpflichtungen, Auslagen) sowie Veranstaltungen mit Anmelde-Sync zur öffentlichen Website.]]></description>
-	<version>0.0.2</version>
+	<version>0.0.3</version>
 	<licence>agpl</licence>
 	<author>Leiterrunde</author>
 	<namespace>Leiterrunde</namespace>
@@ -22,6 +22,22 @@
 		<php min-version="8.1"/>
 		<nextcloud min-version="29" max-version="36"/>
 	</dependencies>
+	<repair-steps>
+		<post-migration>
+			<step>OCA\Leiterrunde\Migration\MigrateNotifyRoles</step>
+			<step>OCA\Leiterrunde\Migration\DeriveBirthYear</step>
+		</post-migration>
+		<install>
+			<step>OCA\Leiterrunde\Migration\MigrateNotifyRoles</step>
+			<step>OCA\Leiterrunde\Migration\DeriveBirthYear</step>
+		</install>
+	</repair-steps>
+	<settings>
+		<admin>OCA\Leiterrunde\Settings\RolesPage</admin>
+		<admin>OCA\Leiterrunde\Settings\StoragePage</admin>
+		<admin>OCA\Leiterrunde\Settings\NotificationsPage</admin>
+		<admin-section>OCA\Leiterrunde\Settings\LeiterrundeSection</admin-section>
+	</settings>
 	<navigations>
 		<navigation>
 			<name>Leiterrunde</name>
@@ -30,22 +46,4 @@
 			<order>20</order>
 		</navigation>
 	</navigations>
-	<background-jobs>
-	</background-jobs>
-	<repair-steps>
-		<install>
-			<step>OCA\Leiterrunde\Migration\MigrateNotifyRoles</step>
-			<step>OCA\Leiterrunde\Migration\DeriveBirthYear</step>
-		</install>
-		<post-migration>
-			<step>OCA\Leiterrunde\Migration\MigrateNotifyRoles</step>
-			<step>OCA\Leiterrunde\Migration\DeriveBirthYear</step>
-		</post-migration>
-	</repair-steps>
-	<settings>
-		<admin-section>OCA\Leiterrunde\Settings\LeiterrundeSection</admin-section>
-		<admin>OCA\Leiterrunde\Settings\RolesPage</admin>
-		<admin>OCA\Leiterrunde\Settings\StoragePage</admin>
-		<admin>OCA\Leiterrunde\Settings\NotificationsPage</admin>
-	</settings>
 </info>
