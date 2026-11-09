@@ -117,6 +117,52 @@ Dates, numbers and money amounts follow the Nextcloud user's locale. Status
 codes stored in the database, CSV column headers, sync payloads and storage
 path placeholders are deliberately not translated.
 
+## Releasing
+
+Releases follow the [app store developer
+guide](https://nextcloudappstore.readthedocs.io/en/latest/developer.html) and
+are cut from `main` in every suite repo:
+
+```bash
+# 1. Version bump + tag
+sed -i 's|<version>OLD</version>|<version>NEW</version>|' appinfo/info.xml
+git commit -am 'chore: release vNEW'
+git tag -a vNEW -m vNEW && git push origin main --tags
+gh release create vNEW --title NEW --notes "…"
+```
+
+GitHub's auto-generated archives have the wrong top-level folder, so the
+app-store tarball is built and signed manually. Requires the app certificate
+(`<appid>.key` + `<appid>.crt` in `~/.nextcloud/certificates/`) and the
+`master-nextcloud-1` dev container for `occ`:
+
+```bash
+# 2. Stage the tagged code and sign inside the container (occ as www-data!)
+STAGE=/tmp/pkg && rm -rf $STAGE && mkdir -p $STAGE
+git archive --prefix=<appid>/ vNEW | tar -x -C $STAGE
+docker cp ~/.nextcloud/certificates/. master-nextcloud-1:/tmp/certs/
+docker cp $STAGE/. master-nextcloud-1:/tmp/pkg/
+docker exec master-nextcloud-1 bash -c 'chmod 644 /tmp/certs/* && chmod -R 777 /tmp/pkg &&
+  su -s /bin/bash www-data -c "php occ integrity:sign-app \
+    --privateKey=/tmp/certs/<appid>.key --certificate=/tmp/certs/<appid>.crt \
+    --path=/tmp/pkg/<appid>"'
+docker cp master-nextcloud-1:/tmp/pkg/<appid>/appinfo/signature.json \
+  $STAGE/<appid>/appinfo/signature.json
+
+# 3. Package, generate the store signature, attach to the GitHub release
+tar -czf ~/projects/dist/<appid>-NEW.tar.gz -C $STAGE <appid>
+openssl dgst -sha512 -sign ~/.nextcloud/certificates/<appid>.key \
+  ~/projects/dist/<appid>-NEW.tar.gz | openssl base64 -A
+gh release upload vNEW ~/projects/dist/<appid>-NEW.tar.gz -R ollimaz/<appid>
+docker exec master-nextcloud-1 rm -rf /tmp/certs /tmp/pkg && rm -rf $STAGE
+```
+
+The signed `signature.json` must be inside the archive. Upload the release at
+<https://apps.nextcloud.com/developer/apps/releases/new> with the tarball's
+download URL and the base64 signature from step 3. (First-time registration
+additionally needs `echo -n <appid> | openssl dgst -sha512 -sign
+~/.nextcloud/certificates/<appid>.key | openssl base64`.)
+
 ## Development
 
 Each app ships self-contained unit tests (OCP stubs, no Nextcloud bootstrap
