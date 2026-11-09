@@ -119,12 +119,15 @@ async function rolesPage() {
 	}
 	table.append(tbody);
 	matrix.append(h('h3', { class: 'lr-subhead' }, _t('Permissions')), h('div', { class: 'lr-matrixwrap' }, table));
+	// 'nca' (Nextcloud admins) has no column; keep it as configured
+	const nca = new Set(data.capabilities.filter(c => (data.role_caps[c.id] || []).includes('nca')).map(c => c.id));
 	const save = async () => {
 		const role_groups = {}, role_caps = {};
 		roleIds.forEach(r => { role_groups[r] = [...roleGroups[r]]; });
 		for (const c of data.capabilities) {
 			if (c.locked) { role_caps[c.id] = c.locked; continue; }
-			role_caps[c.id] = [...roleIds, 'any'].filter(r => cb[c.id + ':' + r].checked);
+			role_caps[c.id] = cols.filter(r => cb[c.id + ':' + r].checked);
+			if (nca.has(c.id)) role_caps[c.id].push('nca');
 		}
 		try {
 			await cap('/settings/roles', { method: 'PUT', json: { role_groups, role_caps } });
@@ -132,13 +135,15 @@ async function rolesPage() {
 		} catch (e) { msg(msgEl, false, e.message); }
 	};
 	const restoreBtn = h('button', { class: 'lr-btn secondary', onclick: () => {
+		nca.clear();
 		for (const c of data.capabilities) {
-			for (const r of [...roleIds, 'any']) cb[c.id + ':' + r].checked = (c.locked ? c.locked : (defaults[c.id] || [])).includes(r);
+			const def = c.locked || c.defaults || [];
+			for (const r of cols) cb[c.id + ':' + r].checked = def.includes(r);
+			if (def.includes('nca')) nca.add(c.id);
 		}
 		msg(msgEl, true, _t('Reset to defaults – the change takes effect only after "Save"'));
 	} }, _t('Restore defaults'));
-	const mainSave = root.querySelector('button.primary');
-	if (mainSave) mainSave.addEventListener('click', save);
+	document.getElementById('lr-roles-save')?.addEventListener('click', save);
 	root.append(h('p', {}, restoreBtn, msgEl));
 }
 
