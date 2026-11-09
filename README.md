@@ -13,7 +13,7 @@ plus an extension API used by the companion module apps.
 ## Features
 
 - **People** — person records with addresses, birthdays, CSV import/export and a per-record audit log
-- **Roles & permissions** — fixed roles (`leiter`, `vorstand`, `kasse`, `schulung`, `fz`, `admin`) mapped to Nextcloud groups; capability matrix editable in the admin settings. `fz.*` capabilities are locked to the `fz` role — not even Nextcloud admins can read certificates of conduct.
+- **Roles & permissions** — fixed roles (`leiter`, `vorstand`, `kasse`, `schulung`, `fz`, `admin`) mapped to Nextcloud groups; capability matrix editable in the admin settings. `fz.read`/`fz.write` are locked to the `fz` role — not even Nextcloud admins can read certificates of conduct; the separate `fz.expiry.read` capability (module apps) exposes only the status and expiry date.
 - **Document storage** — configurable storage user and path templates per document type (`nachweis`, `beleg`); pdf/jpg/png/heic up to 20 MB
 - **Notifications** — role-based recipients for approval and reminder notifications
 - **Dashboard widgets** — birthdays, training status, pending certificates, expenses and upcoming events (provided together with the module apps)
