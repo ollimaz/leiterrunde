@@ -22,6 +22,8 @@ namespace OCA\Leiterrunde\Db;
  * @method void setMobile(?string $v)
  * @method ?string getStreet()
  * @method void setStreet(?string $v)
+ * @method ?string getHouseNumber()
+ * @method void setHouseNumber(?string $v)
  * @method ?string getZip()
  * @method void setZip(?string $v)
  * @method ?string getCity()
@@ -50,6 +52,7 @@ class Person extends BaseEntity {
 	protected ?string $phone = null;
 	protected ?string $mobile = null;
 	protected ?string $street = null;
+	protected ?string $houseNumber = null;
 	protected ?string $zip = null;
 	protected ?string $city = null;
 	protected ?string $birthdate = null;
@@ -57,6 +60,7 @@ class Person extends BaseEntity {
 	protected string $status = 'aktiv';
 	protected ?string $functionLabel = null;
 	protected ?string $notes = null;
+	protected ?string $customFields = null;
 	protected ?string $ncUserId = null;
 	protected int $createdAt = 0;
 	protected int $updatedAt = 0;

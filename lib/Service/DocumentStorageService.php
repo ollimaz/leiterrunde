@@ -106,6 +106,9 @@ class DocumentStorageService {
 		if (!in_array($ext, self::ALLOWED_EXT, true)) {
 			throw new ApiException('Only PDF, JPG, PNG and HEIC are allowed', 422);
 		}
+		if (!self::sniff($tmp, $ext)) {
+			throw new ApiException('File content does not match its extension', 422);
+		}
 		$owner = $this->resolveOwner($uploaderUid);
 		$relPath = $this->renderPath($this->pathTemplate($docTypeId), $vars);
 		$folder = $this->ensureFolder($owner, $relPath);
@@ -116,6 +119,23 @@ class DocumentStorageService {
 		}
 		$file = $folder->newFile($safeName, $content);
 		return ['file_id' => $file->getId(), 'file_owner' => $owner, 'file_name' => $safeName];
+	}
+
+	public static function sniff(string $tmp, string $ext): bool {
+		$fh = @fopen($tmp, 'rb');
+		if ($fh === false) {
+			return false;
+		}
+		$head = (string)fread($fh, 32);
+		fclose($fh);
+		return match ($ext) {
+			'pdf' => str_starts_with($head, '%PDF'),
+			'jpg', 'jpeg' => str_starts_with($head, "\xFF\xD8\xFF"),
+			'png' => str_starts_with($head, "\x89PNG\x0D\x0A\x1A\x0A"),
+			'heic' => substr($head, 4, 4) === 'ftyp'
+				&& (bool)preg_match('/^(heic|heix|hevc|hevx|mif1|msf1)/', substr($head, 8)),
+			default => false,
+		};
 	}
 
 	public function resolveOwner(string $uploaderUid): string {

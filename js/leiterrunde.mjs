@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { renderChart, lrPageHeader, lrSection, lrFigures, badge as sharedBadge, h, appUrl, formatDate, l10n, lrLocale, BADGE_LABELS, toast, icon, skeleton, emptyState, setupMobileNav } from './lr-common.mjs';
+import { renderChart, lrPageHeader, lrSection, lrFigures, badge as sharedBadge, h, appUrl, formatDate, l10n, lrLocale, BADGE_LABELS, toast, icon, skeleton, emptyState, setupMobileNav, enhanceTables } from './lr-common.mjs';
 const lh = h;
 const { t: _t, n: _n } = l10n('leiterrunde');
 const API = OC.generateUrl('/apps/leiterrunde/api');
@@ -36,6 +36,7 @@ function view(...nodes) {
 	const v = document.getElementById('lr-view');
 	v.textContent = '';
 	v.append(...nodes.filter((n) => n !== null && n !== undefined && n !== false));
+	enhanceTables(v);
 }
 
 const NAV = [
@@ -89,37 +90,203 @@ async function route() {
 
 /* ---------- Adressen ---------- */
 
+function personFieldValue(p, f) {
+	const value = p.custom_fields?.[f.key];
+	return f.type === 'select' ? (f.options.find(o => String(typeof o === 'object' ? o.value : o) === value)?.label || value || '') : (value || '');
+}
+
+const STATUS_COLORS = { ok: _t('Green'), info: _t('Blue'), warn: _t('Orange'), fail: _t('Red'), missing: _t('Grey') };
+
+async function viewPersonStatuses() {
+	const defs = statusDefs().map(d => ({ ...d }));
+	const rows = h('div', {});
+	const flow = h('div', { class: 'lr-statusflow' });
+	const refreshFlow = () => {
+		flow.textContent = '';
+		flow.append(...defs.flatMap((d, i) => [
+			i ? h('span', { class: 'lr-arrow' }, '→') : null,
+			h('span', { class: 'lr-badge ' + d.color }, d.label || BADGE_LABELS[d.key] || d.key || '?'),
+		]).filter(Boolean));
+	};
+	const previewOf = (d) => h('span', { class: 'lr-badge ' + d.color }, d.label || BADGE_LABELS[d.key] || d.key || '?');
+	const move = (i, dir) => {
+		const j = i + dir;
+		if (j < 0 || j >= defs.length) return;
+		[defs[i], defs[j]] = [defs[j], defs[i]];
+		renderRows();
+	};
+	const renderRows = () => {
+		rows.textContent = '';
+		defs.forEach((d, i) => {
+			const locked = d.key === 'aktiv' || d.key === 'ehemalig';
+			const preview = previewOf(d);
+			const refresh = () => { preview.className = 'lr-badge ' + d.color; preview.textContent = d.label || BADGE_LABELS[d.key] || d.key || '?'; refreshFlow(); };
+			rows.append(h('div', { class: 'lr-search', style: 'gap:8px; align-items:center' },
+				h('button', { class: 'lr-btn quiet', 'aria-label': _t('Move up'), disabled: i === 0 || undefined, onclick: () => move(i, -1) }, '↑'),
+				h('button', { class: 'lr-btn quiet', 'aria-label': _t('Move down'), disabled: i === defs.length - 1 || undefined, onclick: () => move(i, 1) }, '↓'),
+				h('input', { value: d.key, 'aria-label': _t('Key'), disabled: locked || undefined, style: 'width:150px', oninput: e => { d.key = e.target.value; refresh(); } }),
+				h('input', { value: d.label, placeholder: BADGE_LABELS[d.key] || d.key, 'aria-label': _t('Label'), oninput: e => { d.label = e.target.value; refresh(); } }),
+				h('select', { 'aria-label': _t('Color'), onchange: e => { d.color = e.target.value; refresh(); } },
+					...Object.keys(STATUS_COLORS).map(c => h('option', { value: c, selected: d.color === c }, STATUS_COLORS[c]))),
+				preview,
+				h('button', { class: 'lr-btn quiet', disabled: locked || undefined, title: locked ? _t('Required status') : undefined, onclick: () => { defs.splice(i, 1); renderRows(); } }, _t('Remove'))));
+		});
+		refreshFlow();
+	};
+	renderRows();
+	view(lrPageHeader({ title: _t('Person statuses') }),
+		h('p', { class: 'settings-hint' }, _t('One row per status: key (CSV/API value), display label, badge color. "aktiv" and "ehemalig" are required — new people start as aktiv, archiving sets ehemalig. Order defines the workflow.')),
+		flow,
+		rows,
+		h('button', { class: 'lr-btn secondary', onclick: () => { defs.push({ key: '', label: '', color: 'info' }); renderRows(); } }, _t('Add status')),
+		' ',
+		h('button', { class: 'lr-btn', onclick: async () => {
+			try {
+				await api('/settings', { method: 'PUT', json: { person_statuses: defs } });
+				ME = await api('/me');
+				toast(_t('Saved'), false);
+				await viewAdressen();
+			} catch (e) { toast(e.message); }
+		} }, _t('Save')),
+		h('button', { class: 'lr-btn quiet', onclick: viewAdressen }, _t('Cancel')));
+}
+
+async function viewPersonColumns() {
+	const settings = await api('/settings');
+	const fields = JSON.parse(settings.person_fields || '[]');
+	const rows = h('div', {});
+	const render = () => {
+		rows.textContent = '';
+		fields.forEach(f => {
+			const label = h('input', { value: f.label, maxlength: 100, 'aria-label': _t('Column name'), oninput: e => { f.label = e.target.value; } });
+			const options = h('input', { value: (f.options || []).join(', '), placeholder: _t('Options separated by commas'), oninput: e => { f.options = e.target.value.split(',').map(s => s.trim()).filter(Boolean); } });
+			rows.append(h('div', { class: 'lr-search' }, label, h('span', {}, f.key),
+				h('select', { onchange: e => { f.type = e.target.value; render(); } }, ...['text', 'select'].map(type => h('option', { value: type, selected: f.type === type }, type === 'text' ? _t('Text') : _t('Select')))),
+				f.type === 'select' ? options : null));
+		});
+	};
+	render();
+	view(lrPageHeader({ title: _t('Person columns') }), rows,
+		h('button', { class: 'lr-btn secondary', onclick: () => {
+			if (fields.length >= 30) return;
+			let i = 1;
+			while (fields.some(f => f.key === 'custom_' + i)) i++;
+			fields.push({ key: 'custom_' + i, label: '', type: 'text' }); render();
+		} }, _t('Add column')),
+		h('button', { class: 'lr-btn', onclick: async () => {
+			try { await api('/settings', { method: 'PUT', json: { person_fields: JSON.stringify(fields) } }); await viewAdressen(); }
+			catch (e) { toast(e.message); }
+		} }, _t('Save')),
+		h('button', { class: 'lr-btn quiet', onclick: viewAdressen }, _t('Cancel')));
+}
+
+const personStatuses = () => (ME.statuses && ME.statuses.length) ? ME.statuses : ['aktiv', 'nwl', 'inaktiv', 'ehemalig'];
+const statusDefs = () => ME.status_defs || [];
+const statusDef = (s) => statusDefs().find(d => d.key === s);
+const statusLabelOf = (s) => statusDef(s)?.label || BADGE_LABELS[s] || s;
+const statusBadge = (s) => {
+	const d = statusDef(s);
+	return d ? h('span', { class: 'lr-badge ' + d.color }, statusLabelOf(s)) : sharedBadge(s);
+};
+const statusFlow = (currentKey) => h('div', { class: 'lr-statusflow' },
+	...statusDefs().flatMap((d, i) => [
+		i ? h('span', { class: 'lr-arrow' }, '→') : null,
+		h('span', { class: 'lr-badge ' + d.color + (currentKey && d.key !== currentKey ? ' faded' : '') }, d.label || BADGE_LABELS[d.key] || d.key),
+	]).filter(Boolean));
+
+const intlPhone = (raw) => {
+	let d = String(raw || '').replace(/[^\d+]/g, '');
+	if (d.startsWith('00')) d = '+' + d.slice(2);
+	else if (d.startsWith('0')) d = '+49' + d.slice(1);
+	else if (d.startsWith('49')) d = '+' + d;
+	else if (d && !d.startsWith('+')) d = '+49' + d;
+	return d;
+};
+const personAddress = (p) => [
+	[p.street, p.house_number].filter(Boolean).join(' '),
+	[p.zip, p.city].filter(Boolean).join(' '),
+].filter(Boolean).join(', ');
+
+function personCard(p, columns) {
+	const tel = intlPhone(p.mobile || p.phone);
+	const addr = personAddress(p);
+	const dlRow = (label, value) => value ? [h('dt', {}, label), h('dd', {}, value)] : [];
+	const quick = h('div', { class: 'lr-pcard-actions' },
+		tel ? h('a', { class: 'lr-iconbtn', href: 'tel:' + tel, title: _t('Call'), 'aria-label': _t('Call') }, icon('phone')) : null,
+		tel ? h('a', { class: 'lr-iconbtn wa', href: 'https://wa.me/' + tel.slice(1), target: '_blank', rel: 'noopener noreferrer', title: 'WhatsApp', 'aria-label': 'WhatsApp' }, icon('whatsapp')) : null,
+		addr ? h('a', { class: 'lr-iconbtn', href: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(addr), target: '_blank', rel: 'noopener noreferrer', title: _t('Navigate'), 'aria-label': _t('Navigate') }, icon('map-marker')) : null,
+		p.email ? h('a', { class: 'lr-iconbtn', href: 'mailto:' + p.email, title: p.email, 'aria-label': _t('Email') }, icon('email')) : null);
+	const details = h('details', { class: 'lr-details lr-pcard-more' },
+		h('summary', {}, _t('Details')),
+		h('dl', { class: 'lr-pcard-dl' },
+			...dlRow(_t('Email'), p.email),
+			...dlRow(_t('Phone'), p.phone),
+			...dlRow(_t('Mobile'), p.mobile),
+			...dlRow(_t('Address'), addr),
+			...dlRow(_t('Date of birth'), p.birthdate ? formatDate(p.birthdate) : (p.birth_year || '')),
+			...dlRow(_t('Function'), p.function_label),
+			...dlRow(_t('Notes'), p.notes),
+			...columns.flatMap(f => dlRow(f.label, personFieldValue(p, f)))),
+		h('a', { class: 'lr-btn quiet', href: '#/adressen/' + p.id }, _t('Open person')));
+	const meta = [p.function_label, p.city].filter(Boolean).join(' · ');
+	return h('div', { class: 'lr-pcard' },
+		h('div', { class: 'lr-pcard-head' },
+			h('a', { class: 'lr-pcard-name', href: '#/adressen/' + p.id }, p.last_name + ', ' + p.first_name),
+			statusBadge(p.status)),
+		meta ? h('div', { class: 'lr-small lr-muted' }, meta) : null,
+		quick, details);
+}
+
 async function viewAdressen() {
+	const allFields = await api('/persons/fields');
+	const columns = allFields.filter(f => !f.plugin);
 	const search = h('input', { placeholder: _t('Search …'), type: 'search' });
 	const statusSel = h('select', {},
+		h('option', { value: 'active', selected: true }, _t('Active only')),
 		h('option', { value: '' }, _t('All statuses')),
-		...['aktiv', 'nwl', 'inaktiv', 'ehemalig'].map(s => h('option', { value: s }, s)));
+		...personStatuses().map(s => h('option', { value: s }, statusLabelOf(s))));
 	const list = h('div', {});
+	let sortKey = 'last_name', sortDir = 1, persons = [];
+	const sortVal = (p, k) => k === 'status' ? statusLabelOf(p.status || '')
+		: (p[k] || '').toLowerCase();
+	const sortSel = h('select', { 'aria-label': _t('Sort by'), onchange: e => {
+		const [k, dir] = e.target.value.split(':');
+		sortKey = k; sortDir = +dir; render();
+	} },
+		h('option', { value: 'last_name:1' }, _t('Last name A–Z')),
+		h('option', { value: 'last_name:-1' }, _t('Last name Z–A')),
+		h('option', { value: 'first_name:1' }, _t('First name A–Z')),
+		h('option', { value: 'first_name:-1' }, _t('First name Z–A')),
+		h('option', { value: 'status:1' }, _t('Status')),
+		h('option', { value: 'function_label:1' }, _t('Function')));
+	const render = () => {
+		const sorted = [...persons].sort((a, b) => sortDir * String(sortVal(a, sortKey)).localeCompare(String(sortVal(b, sortKey)), lrLocale(), { numeric: true }));
+		list.textContent = '';
+		list.append(persons.length
+			? h('div', { class: 'lr-cardsgrid' }, ...sorted.map(p => personCard(p, columns)))
+			: emptyState(_t('No people found.')));
+	};
 	const reload = async () => {
 		const q = new URLSearchParams();
 		if (search.value) q.set('search', search.value);
-		if (statusSel.value) q.set('status', statusSel.value);
-		const persons = await api('/persons?' + q);
-		list.textContent = '';
-		list.append(persons.length
-			? h('table', { class: 'lr-table' },
-				h('thead', {}, h('tr', {},
-					h('th', {}, _t('Name')), h('th', {}, _t('Email')), h('th', {}, _t('Status')), h('th', {}, _t('Function')))),
-				h('tbody', {}, ...persons.map(p => h('tr', {},
-					h('td', {}, h('a', { href: '#/adressen/' + p.id }, p.last_name + ', ' + p.first_name)),
-					h('td', {}, p.email || ''),
-					h('td', {}, sharedBadge(p.status)),
-					h('td', {}, p.function_label || '')))))
-			: emptyState(_t('No people found.')));
+		if (statusSel.value === 'active') q.set('active', '1');
+		else if (statusSel.value) q.set('status', statusSel.value);
+		persons = await api('/persons?' + q);
+		render();
 	};
 	search.addEventListener('input', () => reload());
 	statusSel.addEventListener('change', () => reload());
 	const actions = [];
+	if (ME.caps['settings.manage']) actions.push(h('button', { class: 'lr-btn secondary', onclick: viewPersonColumns }, _t('Person columns')));
+	if (ME.caps['settings.manage']) actions.push(h('button', { class: 'lr-btn secondary', onclick: viewPersonStatuses }, _t('Statuses')));
 	if (ME.caps['persons.import']) actions.push(h('button', { class: 'lr-btn secondary', onclick: importCsv }, _t('Import CSV')));
-	if (ME.caps['persons.export']) actions.push(h('a', { class: 'lr-btn secondary', href: API + '/persons/export?requesttoken=' + encodeURIComponent(OC.requestToken) }, _t('CSV export')));
 	if (ME.caps['persons.write']) actions.push(h('button', { class: 'lr-btn', onclick: () => viewPersonForm(null) }, _t('New person')));
+	const customCols = allFields.map(f => f.plugin ? _t('Default Kirchort') : f.label).join(';');
+	const importHint = ME.caps['persons.import'] ? h('p', { class: 'lr-small lr-muted' },
+		_t('Import columns:'), ' ', h('code', {}, IMPORT_CSV_HEADER + (customCols ? ';' + customCols : '')), ' ',
+		h('a', { href: '#', onclick: (e) => { e.preventDefault(); downloadCsvTemplate(); } }, _t('Download template'))) : null;
 	view(lrPageHeader({ title: _t('People'), actions }),
-		h('div', { class: 'lr-search' }, search, statusSel), list);
+		h('div', { class: 'lr-search' }, search, statusSel, sortSel), statusFlow(null), importHint, list);
 	await reload();
 }
 
@@ -135,9 +302,10 @@ async function viewPersonDetail(id) {
 	const account = p.nc_user_id ? (p.nc_user_display_name ? p.nc_user_display_name + ' (' + p.nc_user_id + ')' : _t('{uid} (account no longer exists)', { uid: p.nc_user_id })) : null;
 	const rows = [
 		[_t('Email'), p.email], [_t('Phone'), p.phone], [_t('Mobile'), p.mobile],
-		[_t('Address'), [p.street, [p.zip, p.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')],
+		[_t('Address'), [[p.street, p.house_number].filter(Boolean).join(' '), [p.zip, p.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')],
 		[_t('Date of birth'), birth], [_t('Function'), p.function_label],
 		[_t('Nextcloud user'), account], [_t('Notes'), p.notes],
+		...(await api('/persons/fields')).map(f => [f.plugin ? _t('Default Kirchort') : f.label, personFieldValue(p, f)]),
 	].filter(r => r[1]);
 	const grid = h('dl', { class: 'lr-facts' },
 		...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))]));
@@ -153,7 +321,7 @@ async function viewPersonDetail(id) {
 		try { await api('/persons/' + id, { method: 'DELETE' }); toast(_t('Deleted'), false); go('#/adressen'); }
 		catch (e) { toast(e.message); }
 	} }, _t('Delete')));
-	const nodes = [lrPageHeader({ kicker: _t('Leiterrunde · People'), title: p.first_name + ' ' + p.last_name, lede: BADGE_LABELS[p.status] || p.status, actions }), grid];
+	const nodes = [lrPageHeader({ kicker: _t('Leiterrunde · People'), title: p.first_name + ' ' + p.last_name, lede: statusBadge(p.status), actions }), statusFlow(p.status), grid];
 	// Schulungsstatus (Modul-App, wenn aktiviert)
 	try {
 		if (!(ME.modules || []).includes('leiterrunde_schulungen')) throw new Error('off');
@@ -170,7 +338,7 @@ async function viewPersonDetail(id) {
 		try {
 			const FIELD = {
 				created: _t('Created'), first_name: _t('First name'), last_name: _t('Last name'), email: _t('Email'),
-				phone: _t('Phone'), mobile: _t('Mobile'), street: _t('Street'), zip: _t('Postcode'), city: _t('Place'),
+				phone: _t('Phone'), mobile: _t('Mobile'), street: _t('Street'), house_number: _t('House number'), zip: _t('Postcode'), city: _t('Place'),
 				birthdate: _t('Date of birth'), birth_year: _t('Birth year'), status: _t('Status'),
 				function_label: _t('Function'), notes: _t('Notes'), nc_user_id: _t('Nextcloud user'),
 			};
@@ -191,6 +359,13 @@ async function viewPersonDetail(id) {
 }
 
 async function viewPersonForm(p) {
+	const columns = await api('/persons/fields');
+	const customInputs = new Map(columns.map(f => {
+		const value = p?.custom_fields?.[f.key] || '';
+		const options = (f.options || []).map(o => typeof o === 'object' ? o : { value: o, label: o });
+		if (value && !options.some(o => o.value === value)) options.push({ value, label: value });
+		return [f.key, f.type === 'select' ? h('select', {}, h('option', { value: '' }, '–'), ...options.map(o => h('option', { value: o.value, selected: o.value === value }, o.label))) : h('input', { value, maxlength: 2000 })];
+	}));
 	const { userPicker } = window.LeiterrundeUI;
 	const yearOnly = !!(p && !p.birthdate && p.birth_year);
 	const inp = (key, attrs = {}, span = 6) => {
@@ -203,7 +378,8 @@ async function viewPersonForm(p) {
 	const email = inp('email', { _label: _t('Email'), type: 'email' }, 6);
 	const phone = inp('phone', { _label: _t('Phone'), type: 'tel' }, 3);
 	const mobile = inp('mobile', { _label: _t('Mobile'), type: 'tel' }, 3);
-	const street = inp('street', { _label: _t('Street') }, 6);
+	const street = inp('street', { _label: _t('Street') }, 4);
+	const houseNumber = inp('house_number', { _label: _t('House number'), maxlength: 20 }, 2);
 	const zip = inp('zip', { _label: _t('Postcode'), inputmode: 'numeric', maxlength: 10 }, 2);
 	const city = inp('city', { _label: _t('Place') }, 4);
 
@@ -224,8 +400,8 @@ async function viewPersonForm(p) {
 		h('label', { class: 'lr-check' }, yearCb, _t('Only birth year known')));
 
 	const statusSel = h('select', {},
-		...['aktiv', 'nwl', 'inaktiv', 'ehemalig'].map(s =>
-			h('option', { value: s, selected: p && p.status === s }, (window.LeiterrundeUI.BADGE_LABELS[s] || _t(s)))));
+		...personStatuses().map(s =>
+			h('option', { value: s, selected: p && p.status === s }, statusLabelOf(s))));
 	const statusWrap = h('div', { class: 'lr-f col-4' }, h('label', { class: 'lr-flabel' }, _t('Status')), statusSel);
 	const func = inp('function_label', { _label: _t('Function') }, 4);
 
@@ -242,12 +418,14 @@ async function viewPersonForm(p) {
 	const notesWrap = h('div', { class: 'lr-f col-12' }, h('label', { class: 'lr-flabel' }, _t('Notes')), notes);
 
 	const form = h('div', { class: 'lr-form lr-formgrid' },
-		firstName, lastName, email, phone, mobile, street, zip, city,
-		bdWrap, statusWrap, func, userWrap, notesWrap);
+		firstName, lastName, email, phone, mobile, street, houseNumber, zip, city,
+		bdWrap, statusWrap, func, userWrap, notesWrap,
+		...columns.map(f => h('div', { class: 'lr-f col-6' }, h('label', { class: 'lr-flabel' }, f.plugin ? _t('Default Kirchort') : f.label), customInputs.get(f.key))));
 	setMode(yearOnly);
 
 	const save = h('button', { class: 'lr-btn', onclick: async () => {
-		const body = { status: statusSel.value, notes: notes.value || null, nc_user_id: ncUid };
+		const body = { status: statusSel.value, notes: notes.value || null, nc_user_id: ncUid,
+			custom_fields: Object.fromEntries([...customInputs].map(([key, input]) => [key, input.value || null])) };
 		for (const el of form.querySelectorAll('input[data-key]')) {
 			body[el.dataset.key] = el.value === '' ? null : el.value;
 		}
@@ -283,6 +461,16 @@ function importCsv() {
 		} catch (e) { toast(e.message); }
 	});
 	input.click();
+}
+
+const IMPORT_CSV_HEADER = 'Vorname;Nachname;Stra\u00dfe;Hausnummer;PLZ;Ort;Telefon;Mobil;Geburtstag;E-Mail';
+
+function downloadCsvTemplate() {
+	const blob = new Blob(['\uFEFF' + IMPORT_CSV_HEADER + '\n'], { type: 'text/csv;charset=utf-8' });
+	const url = URL.createObjectURL(blob);
+	const a = h('a', { href: url, download: 'adressen-import.csv' });
+	a.click();
+	URL.revokeObjectURL(url);
 }
 
 /* ---------- Geburtstage ---------- */

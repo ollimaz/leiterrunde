@@ -17,19 +17,17 @@ use OCA\Leiterrunde\Exception\ApiException;
 use OCA\Leiterrunde\Exception\NotFoundException;
 use OCA\Leiterrunde\Service\AuditService;
 use OCA\Leiterrunde\Service\PermissionService;
+use OCA\Leiterrunde\Service\PersonCsvParser;
 use OCA\Leiterrunde\Service\PersonRules;
+use OCA\Leiterrunde\Service\SettingsService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
-use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\JSONResponse;
-use OCP\AppFramework\Http\Response;
 use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 
 class PersonsController extends ApiController {
-	public const STATUSES = ['aktiv', 'nwl', 'inaktiv', 'ehemalig'];
-
 	private const FIELDS = [
 		'first_name' => 'firstName',
 		'last_name' => 'lastName',
@@ -37,6 +35,7 @@ class PersonsController extends ApiController {
 		'phone' => 'phone',
 		'mobile' => 'mobile',
 		'street' => 'street',
+		'house_number' => 'houseNumber',
 		'zip' => 'zip',
 		'city' => 'city',
 		'birthdate' => 'birthdate',
@@ -47,8 +46,6 @@ class PersonsController extends ApiController {
 		'nc_user_id' => 'ncUserId',
 	];
 
-	private const CSV_HEADER = ['ID', 'Vorname', 'Nachname', 'E-Mail', 'Telefon', 'Mobil', 'Straße', 'PLZ', 'Ort', 'Geburtsdatum', 'Geburtsjahr', 'Status', 'Funktion', 'Notizen', 'Nextcloud-Benutzer'];
-
 	public function __construct(
 		IRequest $request,
 		LoggerInterface $logger,
@@ -58,16 +55,18 @@ class PersonsController extends ApiController {
 		private AuditService $audit,
 		private \OCP\IUserManager $userManager,
 		private PersonRules $rules,
+		private \OCA\Leiterrunde\Service\PersonFieldsService $personFields,
+		private SettingsService $settings,
 	) {
 		parent::__construct(Application::APP_ID, $request, $logger);
 	}
 
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
-	public function index(?string $search = null, ?string $status = null): JSONResponse {
-		return $this->wrap(function () use ($search, $status) {
+	public function index(?string $search = null, ?string $status = null, ?string $active = null): JSONResponse {
+		return $this->wrap(function () use ($search, $status, $active) {
 			$this->perm->require('persons.read');
-			return array_map(fn (Person $p) => $this->withUser($p), $this->mapper->findAll($search, $status));
+			return array_map(fn (Person $p) => $this->withUser($p), $this->mapper->findAll($search, $status, 500, 0, $active === '1'));
 		});
 	}
 
@@ -100,6 +99,7 @@ class PersonsController extends ApiController {
 		?string $phone = null,
 		?string $mobile = null,
 		?string $street = null,
+		?string $house_number = null,
 		?string $zip = null,
 		?string $city = null,
 		?string $birthdate = null,
@@ -108,16 +108,20 @@ class PersonsController extends ApiController {
 		?string $function_label = null,
 		?string $notes = null,
 		?string $nc_user_id = null,
+		?array $custom_fields = null,
 	): JSONResponse {
-		return $this->wrap(function () use ($first_name, $last_name, $email, $phone, $mobile, $street, $zip, $city, $birthdate, $birth_year, $status, $function_label, $notes, $nc_user_id) {
+		return $this->wrap(function () use ($first_name, $last_name, $email, $phone, $mobile, $street, $house_number, $zip, $city, $birthdate, $birth_year, $status, $function_label, $notes, $nc_user_id, $custom_fields) {
 			$this->perm->require('persons.write');
 			$p = new Person();
-			$this->applyFields($p, compact('first_name', 'last_name', 'email', 'phone', 'mobile', 'street', 'zip', 'city', 'birthdate', 'birth_year', 'status', 'function_label', 'notes', 'nc_user_id'));
+			$this->applyFields($p, compact('first_name', 'last_name', 'email', 'phone', 'mobile', 'street', 'house_number', 'zip', 'city', 'birthdate', 'birth_year', 'status', 'function_label', 'notes', 'nc_user_id'));
 			$p->setCreatedAt(time());
+			if ($custom_fields !== null) {
+				$p->setCustomFields($this->personFields->merge($p->getCustomFields(), $custom_fields));
+			}
 			$p->setUpdatedAt(time());
 			$p = $this->mapper->insert($p);
 			$this->audit->diff('person', $p->getId(), null, ['_action' => 'created']);
-			return new JSONResponse($p->jsonSerialize(), Http::STATUS_CREATED);
+			return new JSONResponse($this->withUser($p), Http::STATUS_CREATED);
 		});
 	}
 
@@ -130,6 +134,7 @@ class PersonsController extends ApiController {
 		?string $phone = null,
 		?string $mobile = null,
 		?string $street = null,
+		?string $house_number = null,
 		?string $zip = null,
 		?string $city = null,
 		?string $birthdate = null,
@@ -138,12 +143,13 @@ class PersonsController extends ApiController {
 		?string $function_label = null,
 		?string $notes = null,
 		?string $nc_user_id = null,
+		?array $custom_fields = null,
 	): JSONResponse {
-		return $this->wrap(function () use ($id, $first_name, $last_name, $email, $phone, $mobile, $street, $zip, $city, $birthdate, $birth_year, $status, $function_label, $notes, $nc_user_id) {
+		return $this->wrap(function () use ($id, $first_name, $last_name, $email, $phone, $mobile, $street, $house_number, $zip, $city, $birthdate, $birth_year, $status, $function_label, $notes, $nc_user_id, $custom_fields) {
 			$this->perm->require('persons.write');
 			$p = $this->mapper->find($id);
 			$before = $p->jsonSerialize();
-			$data = compact('first_name', 'last_name', 'email', 'phone', 'mobile', 'street', 'zip', 'city', 'birthdate', 'birth_year', 'status', 'function_label', 'notes', 'nc_user_id');
+			$data = compact('first_name', 'last_name', 'email', 'phone', 'mobile', 'street', 'house_number', 'zip', 'city', 'birthdate', 'birth_year', 'status', 'function_label', 'notes', 'nc_user_id');
 			// distinguish "field absent" from "set to null": only update keys present in request
 			$params = $this->request->getParams();
 			foreach (array_keys($data) as $k) {
@@ -152,10 +158,13 @@ class PersonsController extends ApiController {
 				}
 			}
 			$this->applyFields($p, $data);
+			if ($custom_fields !== null) {
+				$p->setCustomFields($this->personFields->merge($p->getCustomFields(), $custom_fields));
+			}
 			$p->setUpdatedAt(time());
 			$p = $this->mapper->update($p);
 			$this->audit->diff('person', $p->getId(), $before, $p->jsonSerialize());
-			return $p->jsonSerialize();
+			return $this->withUser($p);
 		});
 	}
 
@@ -205,51 +214,15 @@ class PersonsController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	public function export(): Response {
-		try {
-			$this->perm->require('persons.export');
-		} catch (\Throwable) {
-			return new JSONResponse(['error' => 'Forbidden'], Http::STATUS_FORBIDDEN);
-		}
-		$rows = [self::CSV_HEADER];
-		foreach ($this->mapper->findAll() as $p) {
-			$rows[] = [
-				$p->getId(),
-				$p->getFirstName(),
-				$p->getLastName(),
-				$p->getEmail() ?? '',
-				$p->getPhone() ?? '',
-				$p->getMobile() ?? '',
-				$p->getStreet() ?? '',
-				$p->getZip() ?? '',
-				$p->getCity() ?? '',
-				$this->formatDateDe($p->getBirthdate()),
-				$p->getBirthYear() !== null ? (string)$p->getBirthYear() : '',
-				$p->getStatus(),
-				$p->getFunctionLabel() ?? '',
-				$p->getNotes() ?? '',
-				$p->getNcUserId() ?? '',
-			];
-		}
-		$csv = "\xEF\xBB\xBF";
-		$fp = fopen('php://temp', 'r+');
-		foreach ($rows as $row) {
-			fputcsv($fp, $row, ';', escape: '');
-		}
-		rewind($fp);
-		$csv .= stream_get_contents($fp);
-		fclose($fp);
-		return new DataDownloadResponse($csv, 'adressen.csv', 'text/csv; charset=utf-8');
-	}
-
-	#[NoAdminRequired]
 	public function import(): JSONResponse {
 		return $this->wrap(function () {
 			$this->perm->require('persons.import');
 			$file = $this->request->getUploadedFile('file');
 			if (!is_array($file) || empty($file['tmp_name']) || !is_file($file['tmp_name'])) {
 				throw new ApiException('No CSV file uploaded', 400);
+			}
+			if (($file['size'] ?? 0) > PersonCsvParser::MAX_BYTES) {
+				throw new ApiException('File too large', 400);
 			}
 			$content = file_get_contents($file['tmp_name']);
 			if ($content === false || $content === '') {
@@ -260,71 +233,95 @@ class PersonsController extends ApiController {
 	}
 
 	public function importCsv(string $content): array {
-		$content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
-		$firstLine = strtok($content, "\r\n") ?: '';
-		$delim = substr_count($firstLine, ';') >= substr_count($firstLine, ',') ? ';' : ',';
-		$fp = fopen('php://temp', 'r+');
-		fwrite($fp, $content);
-		rewind($fp);
-		$header = fgetcsv($fp, 0, $delim, escape: '');
-		if ($header === false) {
-			throw new ApiException('CSV header missing', 400);
+		$defs = array_column($this->personFields->definitions(), null, 'key');
+		$extraColumns = [];
+		foreach ($defs as $key => $def) {
+			$extraColumns[PersonCsvParser::normalizeHeader((string)$def['label'])] = $key;
+			$extraColumns[PersonCsvParser::normalizeHeader($key)] = $key;
+			if (str_ends_with(PersonCsvParser::normalizeHeader((string)$def['label']), 'kirchort')) {
+				$extraColumns['kirchort'] = $key;
+			}
 		}
-		$header = array_map(static fn ($h) => trim((string)$h), $header);
-		$expected = self::CSV_HEADER;
 		$created = $updated = $skipped = 0;
 		$errors = [];
-		$line = 1;
-		while (($row = fgetcsv($fp, 0, $delim, escape: '')) !== false) {
-			$line++;
-			if ($row === [null] || $row === false) {
-				continue;
-			}
-			$data = [];
-			foreach ($expected as $i => $colName) {
-				$data[$colName] = isset($row[$i]) ? trim((string)$row[$i]) : '';
-			}
+		$statusDefs = $this->settings->personStatusDefs();
+		foreach (PersonCsvParser::parse($content, $extraColumns) as $row) {
+			$line = $row['line'];
+			$data = $row['data'];
 			try {
-				if ($data['Vorname'] === '' && $data['Nachname'] === '') {
+				if (($data['first_name'] ?? '') === '' && ($data['last_name'] ?? '') === '') {
 					$skipped++;
 					continue;
 				}
-				$status = $data['Status'] !== '' ? $data['Status'] : 'aktiv';
-				if (!in_array($status, self::STATUSES, true)) {
-					throw new ApiException('Invalid status: %s', 422, [$status]);
+				$status = null;
+				if (($data['status'] ?? '') !== '') {
+					foreach ($statusDefs as $d) {
+						if ($data['status'] === $d['key'] || ($d['label'] !== '' && mb_strtolower($data['status']) === mb_strtolower($d['label']))) {
+							$status = $d['key'];
+							break;
+						}
+					}
+					if ($status === null) {
+						throw new ApiException('Invalid status: %s', 422, [$data['status']]);
+					}
 				}
-				$birthdate = $this->parseDateDe($data['Geburtsdatum']);
-				$birthYear = $data['Geburtsjahr'] !== '' ? (int)$data['Geburtsjahr'] : null;
+				$birthdate = $this->parseDateDe($data['birthdate'] ?? '');
+				$birthYear = ($data['birth_year'] ?? '') !== '' ? (int)$data['birth_year'] : null;
 				$person = null;
-				if ($data['ID'] !== '' && ctype_digit($data['ID'])) {
+				$id = $data['id'] ?? '';
+				if ($id !== '' && ctype_digit($id)) {
 					try {
-						$person = $this->mapper->find((int)$data['ID']);
+						$person = $this->mapper->find((int)$id);
 					} catch (\Throwable) {
 						$person = null;
 					}
 				}
-				if ($person === null && $data['E-Mail'] !== '') {
-					$person = $this->mapper->findByEmail($data['E-Mail']);
+				if ($person === null && ($data['email'] ?? '') !== '') {
+					$person = $this->mapper->findByEmail($data['email']);
+				}
+				if ($person === null) {
+					$person = $this->mapper->findByName($data['first_name'] ?? '', $data['last_name'] ?? '');
 				}
 				$fields = [
-					'first_name' => $data['Vorname'],
-					'last_name' => $data['Nachname'],
-					'email' => $data['E-Mail'] !== '' ? $data['E-Mail'] : null,
-					'phone' => $data['Telefon'] !== '' ? $data['Telefon'] : null,
-					'mobile' => $data['Mobil'] !== '' ? $data['Mobil'] : null,
-					'street' => $data['Straße'] !== '' ? $data['Straße'] : null,
-					'zip' => $data['PLZ'] !== '' ? $data['PLZ'] : null,
-					'city' => $data['Ort'] !== '' ? $data['Ort'] : null,
+					'first_name' => $data['first_name'] ?? '',
+					'last_name' => $data['last_name'] ?? '',
+					'email' => ($data['email'] ?? '') !== '' ? $data['email'] : null,
+					'phone' => ($data['phone'] ?? '') !== '' ? $data['phone'] : null,
+					'mobile' => ($data['mobile'] ?? '') !== '' ? $data['mobile'] : null,
+					'street' => ($data['street'] ?? '') !== '' ? $data['street'] : null,
+					'house_number' => ($data['house_number'] ?? '') !== '' ? $data['house_number'] : null,
+					'zip' => ($data['zip'] ?? '') !== '' ? $data['zip'] : null,
+					'city' => ($data['city'] ?? '') !== '' ? $data['city'] : null,
 					'birthdate' => $birthdate,
 					'birth_year' => $birthYear,
 					'status' => $status,
-					'function_label' => $data['Funktion'] !== '' ? $data['Funktion'] : null,
-					'notes' => $data['Notizen'] !== '' ? $data['Notizen'] : null,
-					'nc_user_id' => $data['Nextcloud-Benutzer'] !== '' ? $data['Nextcloud-Benutzer'] : null,
+					'function_label' => ($data['function_label'] ?? '') !== '' ? $data['function_label'] : null,
+					'notes' => ($data['notes'] ?? '') !== '' ? $data['notes'] : null,
+					'nc_user_id' => ($data['nc_user_id'] ?? '') !== '' ? $data['nc_user_id'] : null,
 				];
+				$custom = [];
+				foreach (array_intersect_key($data, $defs) as $key => $v) {
+					if ($v === '') {
+						continue;
+					}
+					if (($defs[$key]['type'] ?? 'text') === 'select') {
+						foreach ($defs[$key]['options'] ?? [] as $o) {
+							$ov = is_array($o) ? (string)$o['value'] : (string)$o;
+							$ol = is_array($o) ? (string)$o['label'] : (string)$o;
+							if (mb_strtolower($v) === mb_strtolower($ov) || mb_strtolower($v) === mb_strtolower($ol)) {
+								$v = $ov;
+								break;
+							}
+						}
+					}
+					$custom[$key] = $v;
+				}
 				if ($person !== null) {
 					$before = $person->jsonSerialize();
 					$this->applyFields($person, array_filter($fields, static fn ($v) => $v !== null));
+					if ($custom !== []) {
+						$person->setCustomFields($this->personFields->merge($person->getCustomFields(), $custom));
+					}
 					$person->setUpdatedAt(time());
 					$person = $this->mapper->update($person);
 					$this->audit->diff('person', $person->getId(), $before, $person->jsonSerialize());
@@ -332,6 +329,9 @@ class PersonsController extends ApiController {
 				} else {
 					$person = new Person();
 					$this->applyFields($person, $fields);
+					if ($custom !== []) {
+						$person->setCustomFields($this->personFields->merge($person->getCustomFields(), $custom));
+					}
 					$person->setCreatedAt(time());
 					$person->setUpdatedAt(time());
 					$person = $this->mapper->insert($person);
@@ -342,7 +342,6 @@ class PersonsController extends ApiController {
 				$errors[] = ['line' => $line, 'message' => $e->getMessage()];
 			}
 		}
-		fclose($fp);
 		return ['created' => $created, 'updated' => $updated, 'skipped' => $skipped, 'errors' => $errors];
 	}
 
@@ -372,7 +371,7 @@ class PersonsController extends ApiController {
 					$p->{'set' . ucfirst($prop)}((string)$value);
 					break;
 				case 'status':
-					if (!in_array($value, self::STATUSES, true)) {
+					if (!in_array($value, $this->settings->personStatuses(), true)) {
 						throw new ApiException('Invalid status: %s', 422, [$value]);
 					}
 					$p->setStatus((string)$value);
@@ -411,19 +410,21 @@ class PersonsController extends ApiController {
 		$p->setBirthYear($birthYear);
 	}
 
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function fields(): JSONResponse {
+		return $this->wrap(function () {
+			$this->perm->require('persons.read');
+			return $this->personFields->definitions();
+		});
+	}
+
 	private function withUser(Person $p): array {
 		$j = $p->jsonSerialize();
+		$j['custom_fields'] = (object)$this->personFields->visible($p->getCustomFields());
 		$u = $p->getNcUserId() !== null ? $this->userManager->get($p->getNcUserId()) : null;
 		$j['nc_user_display_name'] = $u?->getDisplayName();
 		return $j;
-	}
-
-	private function formatDateDe(?string $date): string {
-		if ($date === null || $date === '') {
-			return '';
-		}
-		$d = \DateTimeImmutable::createFromFormat('!Y-m-d', substr($date, 0, 10));
-		return $d === false ? '' : $d->format('d.m.Y');
 	}
 
 	/** Accepts dd.mm.yyyy or yyyy-mm-dd; returns Y-m-d or null. */

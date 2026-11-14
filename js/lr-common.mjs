@@ -123,6 +123,11 @@ const ICONS = {
 	'bank': 'M11.5,1L2,6V8H21V6M16,10V17H19V10M2,22H21V19H2M10,10V17H13V10M5,10V17H8V10H5Z',
 	'calendar': 'M19,19H5V8H19M16,1V3H8V1H6V3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3H18V1M17,12H12V17H17V12Z',
 	'alert': 'M13,13H11V7H13M13,17H11V15H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z',
+	'phone': 'M6.62,10.79C8.06,13.62 10.38,15.94 13.21,17.38L15.41,15.18C15.69,14.9 16.08,14.82 16.43,14.93C17.55,15.3 18.75,15.5 20,15.5A1,1 0 0,1 21,16.5V20A1,1 0 0,1 20,21A17,17 0 0,1 3,4A1,1 0 0,1 4,3H7.5A1,1 0 0,1 8.5,4C8.5,5.25 8.7,6.45 9.07,7.57C9.18,7.92 9.1,8.31 8.82,8.59L6.62,10.79Z',
+	'whatsapp': 'M12.04,2C6.58,2 2.13,6.45 2.13,11.91C2.13,13.66 2.59,15.36 3.45,16.86L2.05,22L7.3,20.62C8.75,21.41 10.38,21.83 12.04,21.83C17.5,21.83 21.95,17.38 21.95,11.92C21.95,9.27 20.92,6.78 19.05,4.91C17.18,3.03 14.69,2 12.04,2M12.05,3.67C14.25,3.67 16.31,4.53 17.87,6.09C19.42,7.65 20.28,9.72 20.28,11.92C20.28,16.46 16.58,20.15 12.04,20.15C10.56,20.15 9.11,19.76 7.85,19L7.55,18.83L4.43,19.65L5.26,16.61L5.06,16.29C4.24,15 3.8,13.47 3.8,11.91C3.81,7.37 7.5,3.67 12.05,3.67M8.53,7.33C8.37,7.33 8.1,7.39 7.87,7.64C7.65,7.89 7,8.5 7,9.71C7,10.93 7.89,12.1 8,12.27C8.14,12.44 9.76,14.94 12.25,16C12.84,16.27 13.3,16.42 13.66,16.53C14.25,16.72 14.79,16.69 15.22,16.63C15.7,16.56 16.68,16.03 16.89,15.45C17.1,14.87 17.1,14.38 17.04,14.27C16.97,14.17 16.81,14.11 16.56,14C16.31,13.86 15.09,13.26 14.87,13.18C14.64,13.1 14.5,13.06 14.31,13.3C14.15,13.55 13.67,14.11 13.53,14.27C13.38,14.44 13.24,14.46 13,14.34C12.74,14.21 11.94,13.95 11,13.11C10.26,12.45 9.77,11.64 9.62,11.39C9.5,11.15 9.61,11 9.73,10.89C9.84,10.78 10,10.6 10.1,10.45C10.23,10.31 10.27,10.2 10.35,10.04C10.43,9.87 10.39,9.73 10.33,9.61C10.27,9.5 9.77,8.26 9.56,7.77C9.36,7.29 9.16,7.35 9,7.34C8.86,7.34 8.7,7.33 8.53,7.33Z',
+	'map-marker': 'M12,11.5A2.5,2.5 0 0,1 9.5,9A2.5,2.5 0 0,1 12,6.5A2.5,2.5 0 0,1 14.5,9A2.5,2.5 0 0,1 12,11.5M12,2A7,7 0 0,0 5,9C5,14.25 12,22 12,22C12,22 19,14.25 19,9A7,7 0 0,0 12,2Z',
+	'email': 'M20,8L12,13L4,8V6L12,11L20,6M20,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6C22,4.89 21.1,4 20,4Z',
+	'cellphone': 'M17,19H7V5H17M17,1H7C5.89,1 5,1.89 5,3V21A2,2 0 0,0 7,23H17A2,2 0 0,0 19,21V3C19,1.89 18.1,1 17,1Z',
 };
 
 export function icon(name) {
@@ -275,18 +280,18 @@ let valuePersonId = null;
 export function personPicker({ persons, value = null, onChange }) {
 	const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 	return combobox({
-		value: value ? (() => { const p = persons.find(x => x.id === value); return p ? { id: p.id, label: p.last_name + ', ' + p.first_name, sublabel: p.email || undefined } : null; })() : null,
+		value: value ? (() => { const p = persons.find(x => x.id === value); return p ? { id: p.id, label: p.last_name + ', ' + p.first_name, sublabel: p.picker_sublabel || p.email || undefined } : null; })() : null,
 		placeholder: _t('Search persons …'),
 		onChange: (it) => onChange?.(it ? it.id : null),
 		search: async (q) => {
 			const n = norm(q);
 			return persons.filter(p => norm(p.first_name + ' ' + p.last_name).includes(n) || norm(p.email).includes(n))
-				.map(p => ({ id: p.id, label: p.last_name + ', ' + p.first_name, sublabel: p.email || undefined }));
+				.map(p => ({ id: p.id, label: p.last_name + ', ' + p.first_name, sublabel: p.picker_sublabel || p.email || undefined }));
 		},
 	});
 }
 
-export function mountApp({ appId, title, nav, routes, defaultRoute }) {
+export function mountApp({ appId, title, nav, routes, defaultRoute, navigationHeader }) {
 	const mePromise = me();
 	let root = document.getElementById('leiterrunde-app');
 	if (!root) {
@@ -314,15 +319,24 @@ export function mountApp({ appId, title, nav, routes, defaultRoute }) {
 				lastSection = item.section;
 				navEl.append(h('li', { class: 'lr-nav-section' }, item.section));
 			}
+			const cur = location.hash || (nav[0] ? nav[0].route : '');
 			navEl.append(h('li', {}, h('a', {
 				href: item.route,
-				class: ((location.hash || (nav[0] ? nav[0].route : '')) === item.route) ? 'active' : '',
+				class: (cur === item.route || cur.startsWith(item.route + '/')) ? 'active' : '',
 			}, item.icon ? icon(item.icon) : null, h('span', { class: 'lr-nav-label' }, item.label))));
 		}
 	}
 
 	async function route() {
 		const ME = await mePromise;
+		if (navigationHeader) {
+			let header = document.getElementById('lr-navigation-header');
+			if (!header) {
+				header = h('div', { id: 'lr-navigation-header', class: 'lr-navtitle' });
+				document.getElementById('lr-nav').before(header);
+			}
+			put(header, await navigationHeader(ME, { api: (p, o) => api(appId, p, o), refresh: route }));
+		}
 		renderNav(ME.caps);
 		const allowed = nav.filter((i) => !i.cap || (ME.caps || {})[i.cap]);
 		const navItem = nav.find((i) => i.route === defaultRoute);
@@ -349,10 +363,105 @@ export function mountApp({ appId, title, nav, routes, defaultRoute }) {
 /** Append children, skipping null/undefined/false. */
 export function put(parent, ...children) {
 	parent.replaceChildren(...children.filter((c) => c !== null && c !== undefined && c !== false));
+	enhanceTables(parent);
 	return parent;
 }
 
-window.LeiterrundeUI = { field, checkField, formActions, combobox, BADGE_LABELS, userPicker, personPicker, h, api, badge, toast, formatDate, formatMoney, mountApp, me, put, appUrl, lrPageHeader, lrSection, lrFigures, renderChart, l10n, lrLocale, icon, skeleton, emptyState, setupMobileNav };
+/* ---- responsive tables ----------------------------------------------------
+   Every .lr-table gets wrapped in a scrollable .lr-tablewrap and each cell
+   is stamped with its column header as data-label. When the table's natural
+   width exceeds the wrapper, .lr-cards switches it to a stacked card layout
+   (see leiterrunde.css). Tables marked .lr-matrix keep their column layout
+   and scroll horizontally instead. A ResizeObserver re-evaluates on size
+   changes; a MutationObserver catches tables added or re-rendered later. */
+
+const _lrTableWraps = new Set();
+const _lrTableRO = typeof ResizeObserver !== 'undefined'
+	? new ResizeObserver((entries) => { for (const e of entries) _fitTable(e.target._lrWrap || e.target); })
+	: null;
+
+function _fitTable(wrap) {
+	const table = wrap._lrTable;
+	if (!wrap.isConnected || !table) {
+		if (table) _lrTableRO?.unobserve(table);
+		_lrTableRO?.unobserve(wrap);
+		_lrTableWraps.delete(wrap);
+		return;
+	}
+	const cards = wrap.classList.contains('lr-cards');
+	if (cards) wrap.classList.remove('lr-cards');
+	if (table.classList.contains('lr-matrix') || wrap.classList.contains('lr-matrix')) return;
+	const need = Math.max(table.offsetWidth, table.scrollWidth);
+	if (need > wrap.clientWidth + 1) wrap.classList.add('lr-cards');
+}
+
+function _enhanceTable(table) {
+	let wrap = table._lrWrap;
+	if (wrap && !wrap.contains(table)) wrap = table._lrWrap = null;
+	if (!wrap) {
+		wrap = table.closest('.lr-tablewrap');
+		if (!wrap) {
+			wrap = h('div', { class: 'lr-tablewrap' });
+			table.replaceWith(wrap);
+			wrap.append(table);
+			for (const p of ['Top', 'Right', 'Bottom', 'Left']) {
+				const m = table.style['margin' + p];
+				if (m) { wrap.style['margin' + p] = m; table.style['margin' + p] = ''; }
+			}
+		}
+		wrap._lrTable = table;
+		table._lrWrap = wrap;
+		_lrTableWraps.add(wrap);
+		_lrTableRO?.observe(wrap);
+		_lrTableRO?.observe(table);
+	}
+	const heads = [...table.querySelectorAll(':scope > thead th')].map(th => th.textContent.trim());
+	for (const tr of table.querySelectorAll(':scope > tbody > tr')) {
+		const cells = [...tr.children];
+		const loneSpan = cells.length === 1 ? (+cells[0].getAttribute('colspan') || 1) : 0;
+		if (cells.some(c => c.tagName === 'TH') || (heads.length && loneSpan >= heads.length)) {
+			tr.classList.add('lr-rowhead');
+			continue;
+		}
+		tr.classList.remove('lr-rowhead');
+		let col = 0;
+		for (const td of cells) {
+			td.setAttribute('data-label', heads[col] || '');
+			col += +(td.getAttribute('colspan') || 1);
+		}
+	}
+	if (wrap.clientWidth) _fitTable(wrap);
+}
+
+export function enhanceTables(rootEl) {
+	for (const wrap of [..._lrTableWraps]) {
+		if (!wrap.isConnected) {
+			if (wrap._lrTable) _lrTableRO?.unobserve(wrap._lrTable);
+			_lrTableRO?.unobserve(wrap);
+			_lrTableWraps.delete(wrap);
+		}
+	}
+	if (rootEl?.nodeType !== 1) return;
+	const tables = rootEl.matches('table.lr-table') ? [rootEl] : rootEl.querySelectorAll('table.lr-table');
+	for (const t of tables) _enhanceTable(t);
+}
+
+let _lrTableMO = null;
+function _initResponsiveTables() {
+	if (_lrTableMO || typeof MutationObserver === 'undefined') return;
+	enhanceTables(document.documentElement);
+	_lrTableMO = new MutationObserver((records) => {
+		for (const r of records) for (const n of r.addedNodes) {
+			if (n.nodeType !== 1) continue;
+			const t = n.closest('table.lr-table');
+			if (t) _enhanceTable(t); else enhanceTables(n);
+		}
+	});
+	_lrTableMO.observe(document.documentElement, { childList: true, subtree: true });
+}
+_initResponsiveTables();
+
+window.LeiterrundeUI = { field, checkField, formActions, combobox, BADGE_LABELS, userPicker, personPicker, h, api, badge, toast, formatDate, formatMoney, mountApp, me, put, appUrl, lrPageHeader, lrSection, lrFigures, renderChart, l10n, lrLocale, icon, skeleton, emptyState, setupMobileNav, enhanceTables };
 
 const css = (v) => getComputedStyle(document.querySelector('.lr') || document.documentElement).getPropertyValue(v).trim() || '#888';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

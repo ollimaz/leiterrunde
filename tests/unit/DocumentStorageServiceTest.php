@@ -47,4 +47,35 @@ class DocumentStorageServiceTest extends TestCase {
 		$this->expectException(\OCA\Leiterrunde\Exception\ApiException::class);
 		$this->svc()->renderPath('Leiterrunde/../{jahr}', ['jahr' => '2026']);
 	}
+
+	public function testSniffAcceptsMatchingContent(): void {
+		$tmp = tempnam(sys_get_temp_dir(), 'sniff');
+		try {
+			file_put_contents($tmp, "%PDF-1.7 fake");
+			$this->assertTrue(DocumentStorageService::sniff($tmp, 'pdf'));
+			file_put_contents($tmp, "\xFF\xD8\xFF\xE0" . str_repeat("\0", 16));
+			$this->assertTrue(DocumentStorageService::sniff($tmp, 'jpg'));
+			file_put_contents($tmp, "\x89PNG\x0D\x0A\x1A\x0A" . str_repeat("\0", 16));
+			$this->assertTrue(DocumentStorageService::sniff($tmp, 'png'));
+			file_put_contents($tmp, "\0\0\0\x18ftypheic" . str_repeat("\0", 16));
+			$this->assertTrue(DocumentStorageService::sniff($tmp, 'heic'));
+		} finally {
+			unlink($tmp);
+		}
+	}
+
+	public function testSniffRejectsMismatchedContent(): void {
+		$tmp = tempnam(sys_get_temp_dir(), 'sniff');
+		try {
+			file_put_contents($tmp, '<?php echo 1;');
+			foreach (['pdf', 'jpg', 'png', 'heic'] as $ext) {
+				$this->assertFalse(DocumentStorageService::sniff($tmp, $ext), $ext);
+			}
+			file_put_contents($tmp, '%PDF-1.7 fake');
+			$this->assertFalse(DocumentStorageService::sniff($tmp, 'png'));
+			$this->assertFalse(DocumentStorageService::sniff($tmp, 'exe'));
+		} finally {
+			unlink($tmp);
+		}
+	}
 }

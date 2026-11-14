@@ -28,13 +28,15 @@ class PersonMapper extends QBMapper {
 	}
 
 	/** @return Person[] */
-	public function findAll(?string $search = null, ?string $status = null, int $limit = 500, int $offset = 0): array {
+	public function findAll(?string $search = null, ?string $status = null, int $limit = 500, int $offset = 0, bool $activeOnly = false): array {
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('*')->from($this->getTableName())
 			->orderBy('last_name', 'ASC')->addOrderBy('first_name', 'ASC')
 			->setMaxResults($limit)->setFirstResult($offset);
 		if ($status !== null && $status !== '') {
 			$qb->andWhere($qb->expr()->eq('status', $qb->createNamedParameter($status)));
+		} elseif ($activeOnly) {
+			$qb->andWhere($qb->expr()->notIn('status', $qb->createNamedParameter(['ehemalig', 'inaktiv'], \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_STR_ARRAY)));
 		}
 		if ($search !== null && $search !== '') {
 			$like = '%' . $this->db->escapeLikeParameter($search) . '%';
@@ -57,6 +59,23 @@ class PersonMapper extends QBMapper {
 		} catch (DoesNotExistException) {
 			return null;
 		}
+	}
+
+	/** Returns the person only when exactly one row matches the name (case-insensitive). */
+	public function findByName(string $firstName, string $lastName): ?Person {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')->from($this->getTableName())
+			->where($qb->expr()->eq(
+				$qb->func()->lower('first_name'),
+				$qb->createNamedParameter(mb_strtolower($firstName))
+			))
+			->andWhere($qb->expr()->eq(
+				$qb->func()->lower('last_name'),
+				$qb->createNamedParameter(mb_strtolower($lastName))
+			))
+			->setMaxResults(2);
+		$persons = $this->findEntities($qb);
+		return count($persons) === 1 ? $persons[0] : null;
 	}
 
 	public function findByEmail(string $email): ?Person {

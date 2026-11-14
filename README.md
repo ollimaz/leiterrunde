@@ -12,7 +12,7 @@ plus an extension API used by the companion module apps.
 
 ## Features
 
-- **People** — person records with addresses, birthdays, CSV import/export and a per-record audit log
+- **People** — person records with addresses, birthdays, admin CSV import (also maps custom/module fields such as the Messdienerplan "Default Kirchort" column by name), configurable person statuses, sortable address list and a per-record audit log
 - **Roles & permissions** — fixed roles (`leiter`, `vorstand`, `kasse`, `schulung`, `fz`, `admin`) mapped to Nextcloud groups; capability matrix editable in the admin settings. `fz.read`/`fz.write` are locked to the `fz` role — not even Nextcloud admins can read certificates of conduct; the separate `fz.expiry.read` capability (module apps) exposes only the status and expiry date.
 - **Document storage** — configurable storage user and path templates per document type (`nachweis`, `beleg`); pdf/jpg/png/heic up to 20 MB
 - **Notifications** — role-based recipients for approval and reminder notifications
@@ -76,7 +76,7 @@ Base path `/apps/leiterrunde/api`:
 
 | Verb | Paths |
 |---|---|
-| GET | `/me`, `/overview`, `/persons`, `/persons/birthdays`, `/persons/options`, `/persons/export`, `/persons/{id}`, `/persons/{id}/audit`, `/settings`, `/settings/roles`, `/settings/storage`, `/settings/storage/user-check`, `/groups`, `/users`, `/audit` |
+| GET | `/me`, `/overview`, `/persons`, `/persons/birthdays`, `/persons/options`, `/persons/{id}`, `/persons/{id}/audit`, `/settings`, `/settings/roles`, `/settings/storage`, `/settings/storage/user-check`, `/groups`, `/users`, `/audit` |
 | POST | `/persons`, `/persons/import`, `/settings/secret/regenerate`, `/sync` |
 | PUT | `/persons/{id}`, `/settings`, `/settings/roles`, `/settings/storage` |
 | DELETE | `/persons/{id}` |

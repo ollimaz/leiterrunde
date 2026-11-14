@@ -131,6 +131,28 @@
 .lr .lr-tablewrap .lr-table { border: 0; border-radius: 0; }
 .lr .lr-table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--color-border); border-radius: var(--border-radius-container); background: var(--color-main-background); }
 .lr .lr-table th { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-maxcontrast); text-align: left; border-bottom: 1px solid var(--color-border); padding: 10px 12px; white-space: nowrap; }
+.lr .lr-table th.lr-sort { cursor: pointer; user-select: none; }
+.lr .lr-table th.lr-sort:hover { color: var(--color-main-text); }
+.lr .lr-table th.lr-sort.sorted { color: var(--color-main-text); }
+.lr .lr-statusflow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 14px; }
+.lr .lr-statusflow .lr-arrow { color: var(--color-text-maxcontrast); font-weight: 600; }
+.lr .lr-badge.faded { opacity: .4; filter: saturate(.6); }
+
+.lr .lr-cardsgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+.lr .lr-pcard { border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; background: var(--color-main-background); transition: box-shadow .15s ease; }
+.lr .lr-pcard:hover { box-shadow: 0 2px 10px rgba(0,0,0,.09); }
+.lr .lr-pcard-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.lr .lr-pcard-name { font-weight: 600; font-size: 15px; color: var(--color-main-text); text-decoration: none; }
+.lr .lr-pcard-name:hover { text-decoration: underline; }
+.lr .lr-pcard-actions { display: flex; gap: 8px; }
+.lr .lr-iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--color-border); color: var(--color-text-maxcontrast); background: var(--color-main-background); }
+.lr .lr-iconbtn:hover { background: var(--color-background-hover); color: var(--color-main-text); border-color: var(--color-border-dark); }
+.lr .lr-iconbtn.wa { color: #128c5e; }
+.lr .lr-iconbtn.wa:hover { background: rgba(18,140,94,.1); border-color: rgba(18,140,94,.4); color: #128c5e; }
+.lr .lr-pcard-more summary { color: var(--color-text-maxcontrast); font-size: var(--font-size-small); font-weight: 500; }
+.lr .lr-pcard-dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 6px 0 10px; font-size: var(--font-size-small); }
+.lr .lr-pcard-dl dt { color: var(--color-text-maxcontrast); }
+.lr .lr-pcard-dl dd { margin: 0; overflow-wrap: anywhere; }
 .lr .lr-table td { padding: 10px 12px; border-bottom: 1px solid var(--color-border); vertical-align: middle; }
 .lr .lr-table tbody tr { transition: background-color var(--animation-quick); }
 .lr .lr-table tbody tr:hover { background: var(--color-background-hover); }
@@ -139,8 +161,63 @@
 .lr .lr-table th:last-child, .lr .lr-table td:last-child { padding-right: 16px; }
 .lr .lr-table .num { text-align: right; font-variant-numeric: lining-nums tabular-nums; }
 .lr .lr-table .code { font-family: var(--lr-mono); font-size: 13px; }
+/* display:flex on a td removes it from the table layout: consecutive flex
+   cells merge into one anonymous cell. Use .lr-actions on a td only once per
+   row (last column); anywhere else put it on an element inside the cell. */
 .lr .lr-table .lr-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
 .lr .lr-table td.num + td { padding-left: 24px; }
+
+/* matrix tables (availability, status grids): never collapse to cards — the
+   wrapper scrolls horizontally and the label column stays pinned so cells
+   remain attributable while scrolling */
+.lr .lr-table.lr-matrix th:not(:first-child), .lr .lr-table.lr-matrix td:not(:first-child) { text-align: center; }
+.lr .lr-table.lr-matrix th .lr-matrix-sub { text-transform: none; font-weight: 400; letter-spacing: normal; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.lr .lr-table.lr-matrix td .lr-actions { justify-content: center; }
+.lr .lr-table.lr-matrix th:first-child, .lr .lr-table.lr-matrix td:first-child {
+	position: sticky; left: 0; z-index: 1; min-width: 140px; max-width: 260px;
+	background: var(--color-main-background); border-right: 1px solid var(--color-border);
+}
+.lr .lr-table.lr-matrix tbody tr:hover td:first-child { background: var(--color-background-hover); }
+
+/* cards mode — a table that doesn't fit its wrapper becomes a stack of
+   labelled rows (toggled by enhanceTables() in lr-common.mjs) */
+.lr .lr-tablewrap.lr-cards { overflow: visible; border: 0; border-top: 1px solid var(--color-border); position: relative; }
+.lr .lr-cards .lr-table { display: block; border: 0; background: transparent; }
+.lr .lr-cards .lr-table thead { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.lr .lr-cards .lr-table tbody { display: block; }
+.lr .lr-cards .lr-table tbody tr {
+	display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 4px 20px;
+	border: 0; border-bottom: 1px solid var(--color-border); border-radius: 0;
+	background: transparent; margin: 0; padding: 10px 0;
+}
+.lr .lr-cards .lr-table tbody tr:hover { background: transparent; }
+.lr .lr-cards .lr-table tbody tr.lr-rowhead { display: block; border-bottom: 0; margin: 18px 0 0; padding: 0; }
+.lr .lr-cards .lr-table tbody tr.lr-rowhead:first-child { margin-top: 0; }
+.lr .lr-cards .lr-table tbody tr.lr-rowhead td {
+	padding: 4px 0;
+	font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-maxcontrast);
+}
+.lr .lr-cards .lr-table td, .lr .lr-cards .lr-table td:first-child, .lr .lr-cards .lr-table td:last-child, .lr .lr-cards .lr-table td.num + td {
+	display: block; border-bottom: 0; padding: 3px 0; text-align: left; overflow-wrap: anywhere; min-width: 0;
+}
+.lr .lr-cards .lr-table td::before {
+	content: attr(data-label); display: block; margin: 0 0 1px;
+	font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-maxcontrast);
+}
+.lr .lr-cards .lr-table td[data-label='']::before { content: none; }
+.lr .lr-cards .lr-table tbody tr > td:first-child { grid-column: 1 / -1; }
+.lr .lr-cards .lr-table tbody tr > td:first-child, .lr .lr-cards .lr-table td:has(> a) { font-weight: 600; }
+.lr .lr-cards .lr-table td.lr-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px; padding-top: 4px; }
+.lr .lr-cards .lr-table td.lr-actions::before { flex-basis: 100%; }
+.lr .lr-cards .lr-table td:has(> .lr-details), .lr .lr-cards .lr-table td:has(> .lr-tablewrap) { grid-column: 1 / -1; }
+.lr .lr-cards .lr-table td > .lr-details { margin-top: 4px; }
+.lr .lr-cards .lr-table td > .lr-tablewrap { margin: 6px 0; }
+.lr .lr-cards .lr-table td input, .lr .lr-cards .lr-table td select { max-width: 100%; }
+
+.lr .lr-details summary { cursor: pointer; font-weight: 500; }
+.lr .lr-details summary::marker { color: var(--color-text-maxcontrast); }
+.lr .lr-details[open] summary { margin-bottom: 6px; }
+.lr .lr-details p { margin: 4px 0; }
 
 /* ---------- buttons, links, focus ---------- */
 

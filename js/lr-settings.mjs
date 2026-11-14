@@ -8,7 +8,7 @@ const LBL = {
 	'Training officers': _t('Training officers'), 'Conduct certificate access': _t('Conduct certificate access'),
 	'Leiterrunde admin': _t('Leiterrunde admin'),
 	'App access': _t('App access'), 'Read people': _t('Read people'), 'Write people': _t('Write people'),
-	'Import people': _t('Import people'), 'Export people': _t('Export people'), 'Delete people': _t('Delete people'),
+	'Import people': _t('Import people'), 'Delete people': _t('Delete people'),
 	'Read change log': _t('Read change log'), 'Manage settings': _t('Manage settings'),
 	'Certificates of conduct': _t('Certificates of conduct'), 'Receipts': _t('Receipts'),
 	'Person files': _t('Person files'),
@@ -207,7 +207,7 @@ async function notifyPage() {
 	const msgEl = h('span', { style: 'margin-left:8px' });
 	const toggles = [['notify_mail', _t('Notify by email')], ['notify_nc', _t('Send Nextcloud notification')], ['notify_person', _t('Also notify the affected person')]];
 	for (const [k, label] of toggles) {
-		const c = h('input', { type: 'checkbox', class: 'checkbox' });
+		const c = h('input', { type: 'checkbox' });
 		c.checked = s[k] === '1';
 		c.id = 'lr-' + k;
 		form.append(h('p', {}, h('label', { class: 'lr-check' }, c, ' ' + label)));
@@ -216,7 +216,7 @@ async function notifyPage() {
 	const roleSels = {};
 	for (const [t, label] of [['training', WARN_LABELS.training], ['hours', WARN_LABELS.hours], ['finance', WARN_LABELS.finance], ['fz', _t('Certificates of conduct (locked: conduct certificate access)')]]) {
 		const boxes = roleIds.map(r => {
-			const c = h('input', { type: 'checkbox', class: 'checkbox', disabled: t === 'fz' });
+			const c = h('input', { type: 'checkbox', disabled: t === 'fz' });
 			c.checked = t === 'fz' ? r === 'fz' : (JSON.parse(s['notify_roles_' + t] || '[]')).includes(r);
 			return c;
 		});

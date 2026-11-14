@@ -35,3 +35,8 @@ a dependency still gets the full gate.
   and consumes the user's credits — ask the user before running it.** Enforced
   when `scan.plus_requires_approval` is set (then pass `--yes` to confirm).
 <!-- rafter:end -->
+
+## Local verification
+
+From the Docker development repository root, run `docker compose exec -T nextcloud phpunit -c apps-extra/leiterrunde/tests/phpunit.xml` for core app tests. PHP is available in the container, not on the host. Regenerate German translation derivatives with `docker compose exec -T nextcloud php apps-extra/leiterrunde/l10n-tools/build.php leiterrunde leiterrunde_messdienerplan` after editing the respective `l10n/de.json` files.
+

@@ -23,7 +23,7 @@ class SettingsService {
 		'warn_days', 'hours_required', 'hours_window_months', 'scope_statuses',
 		'notify_mail', 'notify_nc', 'notify_person',
 		'notify_roles_training', 'notify_roles_hours', 'notify_roles_finance',
-		'expense_categories', 'file_folder',
+		'expense_categories', 'file_folder', 'person_fields', 'person_statuses',
 	];
 
 	private const ENCRYPTED = ['shared_secret', 'imap_password'];
@@ -50,6 +50,7 @@ class SettingsService {
 		'notify_roles_finance' => '["kasse"]',
 		'expense_categories' => 'Material,Fahrtkosten,Verpflegung,Sonstiges',
 		'file_folder' => 'Leiterrunde',
+		'person_statuses' => 'aktiv,nwl,inaktiv,ehemalig',
 	];
 
 	public function __construct(
@@ -96,6 +97,78 @@ class SettingsService {
 		return array_values(array_filter(array_map('trim', explode(',', $this->get('scope_statuses')))));
 	}
 
+	public const STATUS_COLORS = ['ok', 'info', 'warn', 'fail', 'missing'];
+	private const STATUS_COLOR_DEFAULTS = ['aktiv' => 'ok', 'nwl' => 'info', 'inaktiv' => 'missing', 'ehemalig' => 'missing'];
+	private const REQUIRED_STATUSES = ['aktiv', 'ehemalig'];
+
+	/** Configured person status keys. 'aktiv' (default) and 'ehemalig' (archive) are required. @return string[] */
+	public function personStatuses(): array {
+		return array_column($this->personStatusDefs(), 'key');
+	}
+
+	/** @return list<array{key: string, label: string, color: string}> */
+	public function personStatusDefs(): array {
+		try {
+			return self::normalizeStatusDefs($this->get('person_statuses'));
+		} catch (ApiException) {
+			return self::normalizeStatusDefs(self::DEFAULTS['person_statuses']);
+		}
+	}
+
+	/**
+	 * Accepts a JSON/array list of {key, label?, color?} or a comma string
+	 * (optionally 'key:Label' per entry) and returns normalized status defs.
+	 * @return list<array{key: string, label: string, color: string}> @throws ApiException
+	 */
+	public static function normalizeStatusDefs(mixed $raw): array {
+		if (is_array($raw)) {
+			$items = $raw;
+		} else {
+			$dec = json_decode((string)$raw, true);
+			$items = is_array($dec) ? $dec : [];
+			if (!is_array($dec)) {
+				foreach (explode(',', (string)$raw) as $t) {
+					if (trim($t) !== '') {
+						$parts = explode(':', trim($t), 2);
+						$items[] = ['key' => $parts[0], 'label' => $parts[1] ?? ''];
+					}
+				}
+			}
+		}
+		$out = [];
+		foreach ($items as $item) {
+			if (is_string($item)) {
+				$item = ['key' => $item];
+			}
+			if (!is_array($item)) {
+				throw new ApiException('Invalid status: %s', 422, [json_encode($item)]);
+			}
+			$k = preg_replace('/\s+/', '_', mb_strtolower(trim((string)($item['key'] ?? ''))));
+			if (!preg_match('/^[a-z0-9_-]{1,30}$/', (string)$k) || isset($out[$k])) {
+				throw new ApiException('Invalid status: %s', 422, [(string)($item['key'] ?? '')]);
+			}
+			$label = trim((string)($item['label'] ?? ''));
+			if (mb_strlen($label) > 60) {
+				throw new ApiException('Status label too long: %s', 422, [$k]);
+			}
+			$color = (string)($item['color'] ?? '');
+			$out[$k] = [
+				'key' => $k,
+				'label' => $label,
+				'color' => in_array($color, self::STATUS_COLORS, true) ? $color : (self::STATUS_COLOR_DEFAULTS[$k] ?? 'info'),
+			];
+		}
+		if (count($out) > 30) {
+			throw new ApiException('Too many statuses', 422);
+		}
+		foreach (self::REQUIRED_STATUSES as $req) {
+			if (!isset($out[$req])) {
+				throw new ApiException('Required statuses missing: %s', 422, [$req]);
+			}
+		}
+		return array_values($out);
+	}
+
 	/** @return string[] */
 	public function notifyGroups(string $which): array {
 		$roles = json_decode($this->get('notify_roles_' . $which), true);
@@ -138,6 +211,16 @@ class SettingsService {
 							throw new ApiException('Invalid remote URL', 422);
 						}
 					}
+					break;
+				case 'person_fields':
+					$fields = is_string($value) ? json_decode($value, true) : null;
+					if (!is_array($fields)) {
+						throw new ApiException('Invalid person columns', 422);
+					}
+					PersonFieldsService::validateDefinitions($fields);
+					break;
+				case 'person_statuses':
+					$value = json_encode(self::normalizeStatusDefs($value), JSON_THROW_ON_ERROR);
 					break;
 				case 'default_reg_fields':
 					$this->validateRegFields((string)$value);

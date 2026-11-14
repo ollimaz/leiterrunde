@@ -94,6 +94,7 @@ class L10nTest extends TestCase {
 	public function testNoGermanLiterals(): void {
 		$allowlist = ['l10n/', 'l10n-tools/', '/tests/',
 			'PersonsController.php', // German CSV column headers must stay byte-identical (spec §3)
+			'PersonCsvParser.php', // German CSV column headers are parsing data (spec §3)
 			'DocumentStorageService.php', // filename-sanitize char class needs umlauts
 			'GenericParser.php', 'SparkasseParser.php', 'CsvImporter.php', // German bank-mail keywords are parsing data
 		];
