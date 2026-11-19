@@ -321,7 +321,7 @@ async function viewPersonDetail(id) {
 		try { await api('/persons/' + id, { method: 'DELETE' }); toast(_t('Deleted'), false); go('#/adressen'); }
 		catch (e) { toast(e.message); }
 	} }, _t('Delete')));
-	const nodes = [lrPageHeader({ kicker: _t('Leiterrunde · People'), title: p.first_name + ' ' + p.last_name, lede: statusBadge(p.status), actions }), statusFlow(p.status), grid];
+	const nodes = [lrPageHeader({ kicker: _t('Leiterrunde · People'), title: p.first_name + ' ' + p.last_name, actions }), statusFlow(p.status), grid];
 	// Schulungsstatus (Modul-App, wenn aktiviert)
 	try {
 		if (!(ME.modules || []).includes('leiterrunde_schulungen')) throw new Error('off');
@@ -340,12 +340,7 @@ async function viewPersonDetail(id) {
 			const dreqs = await api('/persons/' + id + '/documents');
 			if (dreqs.length) {
 				nodes.push(h('h2', { class: 'lr-section' }, _t('Required documents')),
-					h('table', { class: 'lr-table' },
-						h('thead', {}, h('tr', {}, h('th', {}, _t('Document')), h('th', {}, _t('Status')), h('th', {}, _t('Signed at')), h('th', {}, _t('Method')), h('th', {}, _t('Signature')), h('th', {}, ''))),
-						h('tbody', {}, ...dreqs.map(r => docReqRow({ ...r, person_name: p.first_name + ' ' + p.last_name },
-							rr => h('td', {}, rr.title, rr.required ? ' ' + _t('required') : '',
-								rr.doc_has_file ? [' · ', h('a', { href: OC.generateUrl('/apps/leiterrunde/api/documents/' + rr.document_id + '/file'), target: '_blank' }, _t('Open'))] : []),
-							canManage, () => viewPersonDetail(id))))));
+					...dreqs.map(r => docReqCard({ ...r, person_name: p.first_name + ' ' + p.last_name }, canManage, () => viewPersonDetail(id))));
 			}
 		} catch (e) {}
 	}
@@ -361,12 +356,12 @@ async function viewPersonDetail(id) {
 			const audit = (await api('/persons/' + id + '/audit')).filter(a => a.field !== 'updated_at');
 			if (audit.length) {
 				nodes.push(h('h2', { class: 'lr-section' }, _t('Change log')),
-					h('table', { class: 'lr-table' },
-						h('thead', {}, h('tr', {}, h('th', {}, _t('Time')), h('th', {}, _t('User')), h('th', {}, _t('Field')), h('th', {}, _t('Old')), h('th', {}, _t('New')))),
-						h('tbody', {}, ...audit.map(a => h('tr', {},
-							h('td', {}, new Date(a.created_at * 1000).toLocaleString(lrLocale())),
-							h('td', {}, a.user_id), h('td', {}, FIELD[a.field] || a.field),
-							h('td', {}, shown(a.field, a.old_value)), h('td', {}, shown(a.field, a.new_value)))))));
+					h('div', { class: 'lr-log' }, ...audit.map(a => {
+						const ov = shown(a.field, a.old_value), nv = shown(a.field, a.new_value);
+						return h('div', { class: 'lr-log-row' },
+							h('span', { class: 'lr-log-when' }, new Date(a.created_at * 1000).toLocaleString(lrLocale(), { dateStyle: 'short', timeStyle: 'short' })),
+							h('span', { class: 'lr-log-what' }, a.user_id + ' · ' + (FIELD[a.field] || a.field) + (ov || nv ? ': ' + (ov || '–') + ' → ' + (nv || '–') : '')));
+					})));
 			}
 		} catch (e) {}
 	}
@@ -545,19 +540,50 @@ function factsGrid(p) {
 
 const docMethodLabel = (r) => r.method === 'upload' ? _t('Uploaded file') : (r.method === 'draw' ? _t('Drawn signature') : (r.method === 'accept' ? _t('Confirmed') : '–'));
 
-/** One request row: firstCell(r) renders the lead cell (person or document). */
-function docReqRow(r, firstCell, canManage, refresh) {
-	const docId = r.document_id;
+/** Hidden file input posting a signed artifact for the request. */
+function docReqFileUp(r, refresh) {
 	const fileUp = h('input', { type: 'file', style: 'display:none', accept: '.pdf,.jpg,.jpeg,.png,.heic', onchange: async () => {
 		if (!fileUp.files?.length) return;
 		const fd = new FormData(); fd.append('file', fileUp.files[0]);
 		try {
-			const res = await fetch(API + '/documents/' + docId + '/requests/' + r.id + '/file', { method: 'POST', headers: { 'requesttoken': OC.requestToken }, body: fd });
+			const res = await fetch(API + '/documents/' + r.document_id + '/requests/' + r.id + '/file', { method: 'POST', headers: { 'requesttoken': OC.requestToken }, body: fd });
 			const data = await res.json().catch(() => ({}));
 			if (!res.ok) throw new Error(data.error || _t('Error') + ' ' + res.status);
 			toast(_t('Signed'), false); refresh();
 		} catch (e) { toast(e.message); }
 	} });
+	return fileUp;
+}
+
+/** Admin actions menu for a request — shared by table row and card. */
+function docReqMenu(r, canManage, fileUp, refresh) {
+	if (!canManage) return null;
+	const docId = r.document_id;
+	return menuButton(_t('Actions'), [
+		...(r.status === 'signed'
+			? [{ label: _t('Reset to pending'), onclick: async () => {
+				try { await api('/documents/' + docId + '/requests/' + r.id, { method: 'PUT', json: { status: 'pending' } }); toast(_t('Reset'), false); refresh(); }
+				catch (e) { toast(e.message); }
+			} }]
+			: [{ label: _t('Mark as signed'), onclick: async () => {
+				const name = prompt(_t('Recorded signature for {name} (e.g. their name or “signed on paper”)', { name: r.person_name || '#' + r.person_id }), r.person_name || '');
+				if (!name?.trim()) return;
+				try { await api('/documents/' + docId + '/requests/' + r.id, { method: 'PUT', json: { status: 'signed', signature_text: name.trim() } }); toast(_t('Signed'), false); refresh(); }
+				catch (e) { toast(e.message); }
+			} }]),
+		{ label: r.file_id ? _t('Replace signed file') : _t('Upload signed file'), onclick: () => fileUp.click() },
+		{ label: _t('Remove'), danger: true, onclick: async () => {
+			if (!confirm(_t('Remove request for {name}?', { name: r.person_name || '#' + r.person_id }))) return;
+			try { await api('/documents/' + docId + '/requests/' + r.id, { method: 'DELETE' }); toast(_t('Removed'), false); refresh(); }
+			catch (e) { toast(e.message); }
+		} },
+	]);
+}
+
+/** One request row: firstCell(r) renders the lead cell (person or document). */
+function docReqRow(r, firstCell, canManage, refresh) {
+	const docId = r.document_id;
+	const fileUp = docReqFileUp(r, refresh);
 	return h('tr', {},
 		firstCell(r),
 		h('td', {}, r.status === 'signed' ? h('span', { class: 'lr-badge ok' }, _t('Signed')) : h('span', { class: 'lr-badge info' }, _t('Pending'))),
@@ -566,25 +592,27 @@ function docReqRow(r, firstCell, canManage, refresh) {
 		h('td', {},
 			r.signature_text ? h('em', {}, r.signature_text) : null,
 			r.file_id ? h('a', { href: OC.generateUrl('/apps/leiterrunde/api/documents/' + docId + '/requests/' + r.id + '/file'), target: '_blank' }, _t('Open signature')) : (!r.signature_text ? '–' : null)),
-		h('td', {}, fileUp, canManage ? menuButton(_t('Actions'), [
-			...(r.status === 'signed'
-				? [{ label: _t('Reset to pending'), onclick: async () => {
-					try { await api('/documents/' + docId + '/requests/' + r.id, { method: 'PUT', json: { status: 'pending' } }); toast(_t('Reset'), false); refresh(); }
-					catch (e) { toast(e.message); }
-				} }]
-				: [{ label: _t('Mark as signed'), onclick: async () => {
-					const name = prompt(_t('Recorded signature for {name} (e.g. their name or “signed on paper”)', { name: r.person_name || '#' + r.person_id }), r.person_name || '');
-					if (!name?.trim()) return;
-					try { await api('/documents/' + docId + '/requests/' + r.id, { method: 'PUT', json: { status: 'signed', signature_text: name.trim() } }); toast(_t('Signed'), false); refresh(); }
-					catch (e) { toast(e.message); }
-				} }]),
-			{ label: r.file_id ? _t('Replace signed file') : _t('Upload signed file'), onclick: () => fileUp.click() },
-			{ label: _t('Remove'), danger: true, onclick: async () => {
-				if (!confirm(_t('Remove request for {name}?', { name: r.person_name || '#' + r.person_id }))) return;
-				try { await api('/documents/' + docId + '/requests/' + r.id, { method: 'DELETE' }); toast(_t('Removed'), false); refresh(); }
-				catch (e) { toast(e.message); }
-			} },
-		]) : null));
+		h('td', {}, fileUp, docReqMenu(r, canManage, fileUp, refresh)));
+}
+
+/** Compact card for a request — used on the person page instead of a table row. */
+function docReqCard(r, canManage, refresh) {
+	const fileUp = docReqFileUp(r, refresh);
+	const meta = [];
+	if (r.status === 'signed') {
+		meta.push(_t('Signed on {date} ({method})', { date: new Date(r.signed_at * 1000).toLocaleDateString(lrLocale()), method: r.method === 'upload' ? _t('uploaded file') : (r.method === 'draw' ? _t('drawn signature') : _t('confirmed digitally')) }));
+		if (r.signed_by) meta.push(r.signed_by);
+		if (r.signature_text) meta.push(h('em', {}, r.signature_text));
+		if (r.file_id) meta.push(h('a', { href: OC.generateUrl('/apps/leiterrunde/api/documents/' + r.document_id + '/requests/' + r.id + '/file'), target: '_blank' }, _t('Open signature')));
+	}
+	return h('div', { class: 'lr-docreq' }, fileUp,
+		h('div', { class: 'lr-docreq-head' },
+			h('span', { class: 'lr-docreq-title' }, r.title, r.required ? ' ' : '', r.required ? h('span', { class: 'lr-badge warn' }, _t('Required')) : null,
+				r.doc_has_file ? [' · ', h('a', { href: OC.generateUrl('/apps/leiterrunde/api/documents/' + r.document_id + '/file'), target: '_blank' }, _t('Open'))] : null),
+			h('span', { class: 'lr-docreq-acts' },
+				r.status === 'signed' ? h('span', { class: 'lr-badge ok' }, _t('Signed')) : h('span', { class: 'lr-badge info' }, _t('Pending')),
+				docReqMenu(r, canManage, fileUp, refresh))),
+		meta.length ? h('div', { class: 'lr-small lr-muted lr-docreq-meta' }, ...meta.flatMap((m, i) => i ? [' · ', m] : [m])) : null);
 }
 
 async function signDocRow(r, refresh) {
