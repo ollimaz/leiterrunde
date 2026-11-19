@@ -21,8 +21,10 @@ use OCP\Util;
 /**
  * Shared index page for module apps: guards on the core app being enabled,
  * loads the shared assets plus the module's own entry script.
+ * Instantiated by each module's PageController only when the core app is
+ * enabled — module controllers must not extend it, or they fail to load.
  */
-abstract class ModulePageController extends Controller {
+class ModulePageController extends Controller {
 	public function __construct(
 		string $appName,
 		IRequest $request,
