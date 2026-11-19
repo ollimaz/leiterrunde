@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { renderChart, lrPageHeader, lrSection, lrFigures, badge as sharedBadge, h, appUrl, formatDate, l10n, lrLocale, BADGE_LABELS, toast, icon, skeleton, emptyState, setupMobileNav, enhanceTables } from './lr-common.mjs';
+import { renderChart, lrPageHeader, lrSection, lrFigures, badge as sharedBadge, h, appUrl, formatDate, l10n, lrLocale, BADGE_LABELS, toast, icon, skeleton, emptyState, setupMobileNav, enhanceTables, viewState, saveScroll, restoreScroll, persistForm, menuButton, listView, field, checkField, formActions } from './lr-common.mjs';
 const lh = h;
 const { t: _t, n: _n } = l10n('leiterrunde');
 const API = OC.generateUrl('/apps/leiterrunde/api');
@@ -43,6 +43,7 @@ const NAV = [
 	{ route: '#/uebersicht', label: _t('Overview'), cap: null, icon: 'dashboard' },
 	{ route: '#/adressen', label: _t('People'), cap: 'persons.read', icon: 'people' },
 	{ route: '#/geburtstage', label: _t('Birthdays'), cap: 'persons.read', icon: 'gift' },
+	{ route: '#/dokumente', label: _t('Documents'), caps: ['documents.manage', 'documents.view'], icon: 'files' },
 	{ route: '#/meine', label: _t('My profile'), cap: null, icon: 'account' },
 ];
 
@@ -50,7 +51,8 @@ function renderNav() {
 	const nav = document.getElementById('lr-nav');
 	nav.textContent = '';
 	for (const item of NAV) {
-		if (item.cap && !ME.caps[item.cap]) continue;
+		const need = item.caps || (item.cap ? [item.cap] : []);
+		if (need.length && !need.some(c => ME.caps[c])) continue;
 		nav.append(h('li', {},
 			h('a', { href: item.route, class: location.hash === item.route ? 'active' : '' },
 				icon(item.icon), h('span', { class: 'lr-nav-label' }, item.label))));
@@ -62,6 +64,7 @@ const routes = {
 	'#/': viewUebersicht,
 	'#/adressen': viewAdressen,
 	'#/geburtstage': viewGeburtstage,
+	'#/dokumente': viewDokumente,
 	'#/meine': viewMeine,
 	'#/uebersicht': viewUebersicht,
 };
@@ -75,13 +78,15 @@ async function route() {
 	const hash = location.hash || '#/uebersicht';
 	renderNav();
 	const v = document.getElementById('lr-view');
+	saveScroll();
 	v.textContent = '';
 	v.append(skeleton());
 	const personMatch = hash.match(/^#\/adressen\/(\d+)$/);
 	try {
-		if (personMatch) return await viewPersonDetail(parseInt(personMatch[1]));
+		if (personMatch) { await viewPersonDetail(parseInt(personMatch[1])); restoreScroll(); return; }
 		const fn = routes[hash] || viewUebersicht;
 		await fn();
+		restoreScroll();
 	} catch (e) {
 		console.error('route error', e);
 		toast(e.message);
@@ -207,63 +212,54 @@ const personAddress = (p) => [
 	[p.zip, p.city].filter(Boolean).join(' '),
 ].filter(Boolean).join(', ');
 
-function personCard(p, columns) {
+function personCard(p) {
 	const tel = intlPhone(p.mobile || p.phone);
 	const addr = personAddress(p);
-	const dlRow = (label, value) => value ? [h('dt', {}, label), h('dd', {}, value)] : [];
 	const quick = h('div', { class: 'lr-pcard-actions' },
 		tel ? h('a', { class: 'lr-iconbtn', href: 'tel:' + tel, title: _t('Call'), 'aria-label': _t('Call') }, icon('phone')) : null,
 		tel ? h('a', { class: 'lr-iconbtn wa', href: 'https://wa.me/' + tel.slice(1), target: '_blank', rel: 'noopener noreferrer', title: 'WhatsApp', 'aria-label': 'WhatsApp' }, icon('whatsapp')) : null,
 		addr ? h('a', { class: 'lr-iconbtn', href: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(addr), target: '_blank', rel: 'noopener noreferrer', title: _t('Navigate'), 'aria-label': _t('Navigate') }, icon('map-marker')) : null,
 		p.email ? h('a', { class: 'lr-iconbtn', href: 'mailto:' + p.email, title: p.email, 'aria-label': _t('Email') }, icon('email')) : null);
-	const details = h('details', { class: 'lr-details lr-pcard-more' },
-		h('summary', {}, _t('Details')),
-		h('dl', { class: 'lr-pcard-dl' },
-			...dlRow(_t('Email'), p.email),
-			...dlRow(_t('Phone'), p.phone),
-			...dlRow(_t('Mobile'), p.mobile),
-			...dlRow(_t('Address'), addr),
-			...dlRow(_t('Date of birth'), p.birthdate ? formatDate(p.birthdate) : (p.birth_year || '')),
-			...dlRow(_t('Function'), p.function_label),
-			...dlRow(_t('Notes'), p.notes),
-			...columns.flatMap(f => dlRow(f.label, personFieldValue(p, f)))),
-		h('a', { class: 'lr-btn quiet', href: '#/adressen/' + p.id }, _t('Open person')));
 	const meta = [p.function_label, p.city].filter(Boolean).join(' · ');
 	return h('div', { class: 'lr-pcard' },
 		h('div', { class: 'lr-pcard-head' },
 			h('a', { class: 'lr-pcard-name', href: '#/adressen/' + p.id }, p.last_name + ', ' + p.first_name),
 			statusBadge(p.status)),
 		meta ? h('div', { class: 'lr-small lr-muted' }, meta) : null,
-		quick, details);
+		quick);
 }
 
 async function viewAdressen() {
 	const allFields = await api('/persons/fields');
-	const columns = allFields.filter(f => !f.plugin);
-	const search = h('input', { placeholder: _t('Search …'), type: 'search' });
+	const vs = viewState('adressen');
+	const st = vs.get();
+	const statusVal = st.status === undefined ? 'active' : st.status;
+	const search = h('input', { placeholder: _t('Search …'), type: 'search', value: st.q || '' });
 	const statusSel = h('select', {},
-		h('option', { value: 'active', selected: true }, _t('Active only')),
-		h('option', { value: '' }, _t('All statuses')),
-		...personStatuses().map(s => h('option', { value: s }, statusLabelOf(s))));
+		h('option', { value: 'active', selected: statusVal === 'active' }, _t('Active only')),
+		h('option', { value: '', selected: statusVal === '' }, _t('All statuses')),
+		...personStatuses().map(s => h('option', { value: s, selected: statusVal === s }, statusLabelOf(s))));
 	const list = h('div', {});
 	let sortKey = 'last_name', sortDir = 1, persons = [];
 	const sortVal = (p, k) => k === 'status' ? statusLabelOf(p.status || '')
 		: (p[k] || '').toLowerCase();
 	const sortSel = h('select', { 'aria-label': _t('Sort by'), onchange: e => {
 		const [k, dir] = e.target.value.split(':');
-		sortKey = k; sortDir = +dir; render();
+		sortKey = k; sortDir = +dir; persist(); render();
 	} },
-		h('option', { value: 'last_name:1' }, _t('Last name A–Z')),
-		h('option', { value: 'last_name:-1' }, _t('Last name Z–A')),
-		h('option', { value: 'first_name:1' }, _t('First name A–Z')),
-		h('option', { value: 'first_name:-1' }, _t('First name Z–A')),
-		h('option', { value: 'status:1' }, _t('Status')),
-		h('option', { value: 'function_label:1' }, _t('Function')));
+		h('option', { value: 'last_name:1', selected: (st.sort || 'last_name:1') === 'last_name:1' }, _t('Last name A–Z')),
+		h('option', { value: 'last_name:-1', selected: st.sort === 'last_name:-1' }, _t('Last name Z–A')),
+		h('option', { value: 'first_name:1', selected: st.sort === 'first_name:1' }, _t('First name A–Z')),
+		h('option', { value: 'first_name:-1', selected: st.sort === 'first_name:-1' }, _t('First name Z–A')),
+		h('option', { value: 'status:1', selected: st.sort === 'status:1' }, _t('Status')),
+		h('option', { value: 'function_label:1', selected: st.sort === 'function_label:1' }, _t('Function')));
+	if (st.sort) [sortKey, sortDir] = [st.sort.split(':')[0], +st.sort.split(':')[1] || 1];
+	const persist = () => vs.set({ q: search.value, status: statusSel.value, sort: sortSel.value });
 	const render = () => {
 		const sorted = [...persons].sort((a, b) => sortDir * String(sortVal(a, sortKey)).localeCompare(String(sortVal(b, sortKey)), lrLocale(), { numeric: true }));
 		list.textContent = '';
 		list.append(persons.length
-			? h('div', { class: 'lr-cardsgrid' }, ...sorted.map(p => personCard(p, columns)))
+			? h('div', { class: 'lr-cardsgrid' }, ...sorted.map(p => personCard(p)))
 			: emptyState(_t('No people found.')));
 	};
 	const reload = async () => {
@@ -274,13 +270,17 @@ async function viewAdressen() {
 		persons = await api('/persons?' + q);
 		render();
 	};
-	search.addEventListener('input', () => reload());
-	statusSel.addEventListener('change', () => reload());
-	const actions = [];
-	if (ME.caps['settings.manage']) actions.push(h('button', { class: 'lr-btn secondary', onclick: viewPersonColumns }, _t('Person columns')));
-	if (ME.caps['settings.manage']) actions.push(h('button', { class: 'lr-btn secondary', onclick: viewPersonStatuses }, _t('Statuses')));
-	if (ME.caps['persons.import']) actions.push(h('button', { class: 'lr-btn secondary', onclick: importCsv }, _t('Import CSV')));
-	if (ME.caps['persons.write']) actions.push(h('button', { class: 'lr-btn', onclick: () => viewPersonForm(null) }, _t('New person')));
+	search.addEventListener('input', () => { persist(); reload(); });
+	statusSel.addEventListener('change', () => { persist(); reload(); });
+	const menu = [];
+	if (ME.caps['settings.manage']) menu.push({ label: _t('Person columns'), onclick: viewPersonColumns });
+	if (ME.caps['settings.manage']) menu.push({ label: _t('Statuses'), onclick: viewPersonStatuses });
+	if (ME.caps['persons.import']) menu.push({ label: _t('Import CSV'), onclick: importCsv });
+	if (ME.caps['persons.write']) menu.push({ label: _t('Match accounts'), onclick: viewKontomapping });
+	if (ME.caps['persons.write']) menu.push({ label: _t('New person'), onclick: () => viewPersonForm(null) });
+	const actions = menu.length > 1
+		? [menuButton(_t('Actions'), menu)]
+		: menu.map(m => h('button', { class: 'lr-btn', onclick: m.onclick }, m.label));
 	const customCols = allFields.map(f => f.plugin ? _t('Default Kirchort') : f.label).join(';');
 	const importHint = ME.caps['persons.import'] ? h('p', { class: 'lr-small lr-muted' },
 		_t('Import columns:'), ' ', h('code', {}, IMPORT_CSV_HEADER + (customCols ? ';' + customCols : '')), ' ',
@@ -334,6 +334,21 @@ async function viewPersonDetail(id) {
 					h('tr', {}, h('td', {}, _t('Hours balance ({hours}/{required} h)', { hours: st.hours.hours, required: st.hours.required })), h('td', {}, sharedBadge(st.hours.state)), h('td', {}, '–')),
 					h('tr', {}, h('td', {}, _t('Certificate of conduct')), h('td', {}, sharedBadge(st.fz.state)), h('td', {}, st.fz.expires ? formatDate(st.fz.expires) : '–')))));
 	} catch (e) { /* kein Status-Zugriff */ }
+	if (ME.caps['documents.manage'] || ME.caps['documents.view']) {
+		try {
+			const canManage = !!ME.caps['documents.manage'];
+			const dreqs = await api('/persons/' + id + '/documents');
+			if (dreqs.length) {
+				nodes.push(h('h2', { class: 'lr-section' }, _t('Required documents')),
+					h('table', { class: 'lr-table' },
+						h('thead', {}, h('tr', {}, h('th', {}, _t('Document')), h('th', {}, _t('Status')), h('th', {}, _t('Signed at')), h('th', {}, _t('Method')), h('th', {}, _t('Signature')), h('th', {}, ''))),
+						h('tbody', {}, ...dreqs.map(r => docReqRow({ ...r, person_name: p.first_name + ' ' + p.last_name },
+							rr => h('td', {}, rr.title, rr.required ? ' ' + _t('required') : '',
+								rr.doc_has_file ? [' · ', h('a', { href: OC.generateUrl('/apps/leiterrunde/api/documents/' + rr.document_id + '/file'), target: '_blank' }, _t('Open'))] : []),
+							canManage, () => viewPersonDetail(id))))));
+			}
+		} catch (e) {}
+	}
 	if (ME.caps['audit.read']) {
 		try {
 			const FIELD = {
@@ -421,7 +436,11 @@ async function viewPersonForm(p) {
 		firstName, lastName, email, phone, mobile, street, houseNumber, zip, city,
 		bdWrap, statusWrap, func, userWrap, notesWrap,
 		...columns.map(f => h('div', { class: 'lr-f col-6' }, h('label', { class: 'lr-flabel' }, f.plugin ? _t('Default Kirchort') : f.label), customInputs.get(f.key))));
-	setMode(yearOnly);
+	bd.dataset.key = 'birthdate'; by.dataset.key = 'birth_year'; yearCb.dataset.key = 'year_only';
+	statusSel.dataset.key = 'status'; notes.dataset.key = 'notes';
+	for (const [key, input] of customInputs) input.dataset.key = 'custom_' + key;
+	const draft = p ? null : persistForm(form, 'person-new');
+	setMode(yearCb.checked);
 
 	const save = h('button', { class: 'lr-btn', onclick: async () => {
 		const body = { status: statusSel.value, notes: notes.value || null, nc_user_id: ncUid,
@@ -439,6 +458,7 @@ async function viewPersonForm(p) {
 		try {
 			if (p) await api('/persons/' + p.id, { method: 'PUT', json: body });
 			else await api('/persons', { method: 'POST', json: body });
+			draft?.clear();
 			toast(_t('Saved'), false);
 			go(p ? '#/adressen/' + p.id : '#/adressen');
 		} catch (e) { toast(e.message); }
@@ -476,9 +496,11 @@ function downloadCsvTemplate() {
 /* ---------- Geburtstage ---------- */
 
 async function viewGeburtstage() {
-	const days = h('input', { type: 'number', value: 30, min: 1, max: 365 });
+	const vs = viewState('geburtstage');
+	const days = h('input', { type: 'number', value: vs.get().days || 30, min: 1, max: 365 });
 	const list = h('div', {});
 	const reload = async () => {
+		vs.set({ days: +days.value || 30 });
 		const rows = await api('/persons/birthdays?days=' + (days.value || 30));
 		list.textContent = '';
 		list.append(rows.length
@@ -497,12 +519,195 @@ async function viewGeburtstage() {
 
 /* ---------- Schulungen ---------- */
 
+function factsGrid(p) {
+	if (!p) return null;
+	const custom = typeof p.custom_fields === 'string' ? (JSON.parse(p.custom_fields || '{}') || {}) : (p.custom_fields || {});
+	const rows = [
+		[_t('First name'), p.first_name], [_t('Last name'), p.last_name],
+		[_t('Email'), p.email], [_t('Phone'), p.phone], [_t('Mobile'), p.mobile],
+		[_t('Address'), [[p.street, p.house_number].filter(Boolean).join(' '), [p.zip, p.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')],
+		[_t('Date of birth'), p.birthdate ? formatDate(p.birthdate) : null],
+		[_t('Birth year'), p.birth_year],
+		[_t('Status'), p.status ? statusLabelOf(p.status) : null],
+		[_t('Function'), p.function_label],
+		[_t('Nextcloud user'), p.nc_user_id],
+		[_t('Notes'), p.notes],
+	];
+	for (const f of (ME.field_defs || [])) {
+		const v = custom[f.key];
+		if (v === undefined || v === null || v === '') continue;
+		const opt = (f.options || []).find(o => String(typeof o === 'object' ? o.value : o) === String(v));
+		rows.push([f.plugin ? _t('Default Kirchort') : f.label, opt ? (typeof opt === 'object' ? opt.label : opt) : v]);
+	}
+	return h('dl', { class: 'lr-facts' },
+		...rows.filter(r => r[1] !== null && r[1] !== undefined && r[1] !== '').flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))]));
+}
+
+const docMethodLabel = (r) => r.method === 'upload' ? _t('Uploaded file') : (r.method === 'draw' ? _t('Drawn signature') : (r.method === 'accept' ? _t('Confirmed') : '–'));
+
+/** One request row: firstCell(r) renders the lead cell (person or document). */
+function docReqRow(r, firstCell, canManage, refresh) {
+	const docId = r.document_id;
+	const fileUp = h('input', { type: 'file', style: 'display:none', accept: '.pdf,.jpg,.jpeg,.png,.heic', onchange: async () => {
+		if (!fileUp.files?.length) return;
+		const fd = new FormData(); fd.append('file', fileUp.files[0]);
+		try {
+			const res = await fetch(API + '/documents/' + docId + '/requests/' + r.id + '/file', { method: 'POST', headers: { 'requesttoken': OC.requestToken }, body: fd });
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(data.error || _t('Error') + ' ' + res.status);
+			toast(_t('Signed'), false); refresh();
+		} catch (e) { toast(e.message); }
+	} });
+	return h('tr', {},
+		firstCell(r),
+		h('td', {}, r.status === 'signed' ? h('span', { class: 'lr-badge ok' }, _t('Signed')) : h('span', { class: 'lr-badge info' }, _t('Pending'))),
+		h('td', {}, r.signed_at ? new Date(r.signed_at * 1000).toLocaleDateString(lrLocale()) : '–'),
+		h('td', {}, docMethodLabel(r), r.signed_by ? h('span', { class: 'lr-muted lr-small' }, ' · ' + r.signed_by) : null),
+		h('td', {},
+			r.signature_text ? h('em', {}, r.signature_text) : null,
+			r.file_id ? h('a', { href: OC.generateUrl('/apps/leiterrunde/api/documents/' + docId + '/requests/' + r.id + '/file'), target: '_blank' }, _t('Open signature')) : (!r.signature_text ? '–' : null)),
+		h('td', {}, fileUp, canManage ? menuButton(_t('Actions'), [
+			...(r.status === 'signed'
+				? [{ label: _t('Reset to pending'), onclick: async () => {
+					try { await api('/documents/' + docId + '/requests/' + r.id, { method: 'PUT', json: { status: 'pending' } }); toast(_t('Reset'), false); refresh(); }
+					catch (e) { toast(e.message); }
+				} }]
+				: [{ label: _t('Mark as signed'), onclick: async () => {
+					const name = prompt(_t('Recorded signature for {name} (e.g. their name or “signed on paper”)', { name: r.person_name || '#' + r.person_id }), r.person_name || '');
+					if (!name?.trim()) return;
+					try { await api('/documents/' + docId + '/requests/' + r.id, { method: 'PUT', json: { status: 'signed', signature_text: name.trim() } }); toast(_t('Signed'), false); refresh(); }
+					catch (e) { toast(e.message); }
+				} }]),
+			{ label: r.file_id ? _t('Replace signed file') : _t('Upload signed file'), onclick: () => fileUp.click() },
+			{ label: _t('Remove'), danger: true, onclick: async () => {
+				if (!confirm(_t('Remove request for {name}?', { name: r.person_name || '#' + r.person_id }))) return;
+				try { await api('/documents/' + docId + '/requests/' + r.id, { method: 'DELETE' }); toast(_t('Removed'), false); refresh(); }
+				catch (e) { toast(e.message); }
+			} },
+		]) : null));
+}
+
+async function signDocRow(r, refresh) {
+	const row = h('div', { class: 'lr-docreq' });
+	const signed = r.status === 'signed';
+	const head = h('div', { class: 'lr-docreq-head' },
+		h('span', { class: 'lr-docreq-title' }, r.title, r.required ? ' ' : '', r.required ? h('span', { class: 'lr-badge warn' }, _t('Required')) : null),
+		signed ? h('span', { class: 'lr-badge ok' }, _t('Signed')) : h('span', { class: 'lr-badge info' }, _t('Pending')));
+	row.append(head);
+	if (signed) {
+		row.append(h('div', { class: 'lr-small lr-muted' },
+			_t('Signed on {date} ({method})', { date: new Date(r.signed_at * 1000).toLocaleDateString(lrLocale()), method: r.method === 'upload' ? _t('uploaded file') : (r.method === 'draw' ? _t('drawn signature') : _t('confirmed digitally')) }),
+			r.signature_text ? [' — ', h('em', {}, r.signature_text)] : [],
+			r.file_id ? [' ', h('a', { href: OC.generateUrl('/apps/leiterrunde/api/documents/' + r.document_id + '/requests/' + r.id + '/file'), target: '_blank' }, _t('Open file'))] : []));
+		return row;
+	}
+	const body = h('div', { class: 'lr-docreq-body', style: 'display:none' });
+	const toggle = h('button', { class: 'lr-btn lr-docreq-toggle', onclick: () => { body.style.display = body.style.display === 'none' ? '' : 'none'; } }, icon('pencil'), ' ', _t('Read & sign'));
+	row.append(toggle, body);
+	if (r.doc_has_file) {
+		body.append(h('p', {}, h('a', { href: OC.generateUrl('/apps/leiterrunde/api/documents/' + r.document_id + '/file'), target: '_blank' }, _t('Open document (PDF/file)'))));
+	}
+	if (r.body_text) {
+		body.append(h('div', { class: 'lr-doctext' }, r.body_text));
+	}
+	const sig = h('input', { placeholder: _t('Type your full name as signature'), 'aria-label': _t('Signature') });
+	const fileIn = h('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png,.heic' });
+	const acceptPanel = h('div', {},
+		h('label', { class: 'lr-flabel' }, _t('Confirm digitally')), sig,
+		h('div', { class: 'lr-form-actions' },
+			h('button', { class: 'lr-btn', onclick: async () => {
+				if (!sig.value.trim()) { toast(_t('Please type your name as signature')); return; }
+				try { await api('/documents/' + r.document_id + '/sign', { method: 'POST', json: { signature_text: sig.value.trim() } }); toast(_t('Signed'), false); await refresh(); }
+				catch (e) { toast(e.message); }
+			} }, _t('Accept and sign'))));
+	const uploadPanel = h('div', {},
+		h('label', { class: 'lr-flabel' }, _t('Upload signed file')), fileIn,
+		h('div', { class: 'lr-form-actions' },
+			h('button', { class: 'lr-btn secondary', onclick: async () => {
+				if (!fileIn.files?.length) { toast(_t('Please choose a file')); return; }
+				try {
+					const fd = new FormData(); fd.append('file', fileIn.files[0]);
+					const res = await fetch(API + '/documents/' + r.document_id + '/sign-file', { method: 'POST', headers: { 'requesttoken': OC.requestToken }, body: fd });
+					const data = await res.json().catch(() => ({}));
+					if (!res.ok) throw new Error(data.error || _t('Error') + ' ' + res.status);
+					toast(_t('Signed'), false); await refresh();
+				} catch (e) { toast(e.message); }
+			} }, _t('Upload'))));
+	const pad = h('canvas', { class: 'lr-signpad', 'aria-label': _t('Draw signature'), width: 640, height: 180 });
+	const padCtx = pad.getContext('2d');
+	padCtx.lineWidth = 3; padCtx.lineCap = 'round'; padCtx.lineJoin = 'round';
+	let drawing = false, dirty = false;
+	const padPos = (e) => { const b = pad.getBoundingClientRect(); return [(e.clientX - b.left) * (pad.width / b.width), (e.clientY - b.top) * (pad.height / b.height)]; };
+	pad.addEventListener('pointerdown', (e) => { e.preventDefault(); drawing = true; dirty = true; pad.setPointerCapture(e.pointerId); padCtx.beginPath(); padCtx.moveTo(...padPos(e)); });
+	pad.addEventListener('pointermove', (e) => { if (!drawing) return; padCtx.lineTo(...padPos(e)); padCtx.stroke(); });
+	for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) pad.addEventListener(ev, () => { drawing = false; });
+	const drawPanel = h('div', {},
+		pad,
+		h('div', { class: 'lr-form-actions' },
+			h('button', { class: 'lr-btn quiet', onclick: () => { padCtx.clearRect(0, 0, pad.width, pad.height); dirty = false; } }, _t('Clear')),
+			h('button', { class: 'lr-btn', onclick: async () => {
+				if (!dirty) { toast(_t('Please draw your signature')); return; }
+				try {
+					const blob = await new Promise(res => pad.toBlob(res, 'image/png'));
+					if (!blob) throw new Error(_t('Error'));
+					const fd = new FormData(); fd.append('file', blob, 'signature.png'); fd.append('via', 'draw');
+					const res = await fetch(API + '/documents/' + r.document_id + '/sign-file', { method: 'POST', headers: { 'requesttoken': OC.requestToken }, body: fd });
+					const data = await res.json().catch(() => ({}));
+					if (!res.ok) throw new Error(data.error || _t('Error') + ' ' + res.status);
+					toast(_t('Signed'), false); await refresh();
+				} catch (e) { toast(e.message); }
+			} }, _t('Sign with drawing'))));
+
+	const methods = {
+		draw: { label: _t('Draw signature'), el: drawPanel },
+		accept: { label: _t('Type name'), el: acceptPanel },
+		upload: { label: _t('Upload signed file'), el: uploadPanel },
+	};
+	let active = 'draw';
+	const panelBox = h('div', {});
+	const menuBox = h('div', {});
+	const labelEl = h('span', { class: 'lr-flabel' });
+	const show = (key) => {
+		active = key;
+		labelEl.textContent = methods[key].label;
+		panelBox.textContent = '';
+		panelBox.append(methods[key].el);
+		menuBox.textContent = '';
+		menuBox.append(menuButton(_t('Options'), Object.keys(methods)
+			.filter(k => k !== key)
+			.map(k => ({ label: methods[k].label, onclick: () => show(k) }))));
+	};
+	show('draw');
+	body.append(h('div', { class: 'lr-docreq-sign' },
+		h('div', { class: 'lr-signhead' }, labelEl, menuBox), panelBox));
+	return row;
+}
+
+async function docRequestsSection() {
+	const sec = h('div', {});
+	const render = async () => {
+		const reqs = await api('/documents/mine').catch(() => []);
+		sec.textContent = '';
+		if (!reqs.length) return;
+		sec.append(h('h2', { class: 'lr-section' }, _t('Documents to sign')));
+		const pending = reqs.filter(r => r.status !== 'signed');
+		const done = reqs.filter(r => r.status === 'signed');
+		for (const r of [...pending, ...done]) sec.append(await signDocRow(r, render));
+	};
+	await render();
+	return sec;
+}
+
 async function viewMeine() {
 	const p = ME.person;
 	const nodes = [lrPageHeader({ title: _t('My profile') })];
-	nodes.push(p
-		? h('p', {}, _t('Linked person') + ': ' + p.first_name + ' ' + p.last_name + ' (#' + p.id + ')')
-		: h('p', {}, _t('Your account is not linked to a person.')));
+	if (!p) {
+		nodes.push(h('p', {}, _t('Your account is not linked to a person.')));
+	} else {
+		nodes.push(h('p', {}, _t('Linked person') + ': ' + p.first_name + ' ' + p.last_name + ' (#' + p.id + ')'),
+			factsGrid(p),
+			await docRequestsSection());
+	}
 	const tiles = await api('/overview').catch(() => []);
 	const self = tiles.filter(t => /mein|schulungsstand/i.test(t.title));
 	if (self.length) {
@@ -515,6 +720,197 @@ async function viewMeine() {
 		}
 		nodes.push(grid);
 	}
+	view(...nodes);
+}
+
+/* ---------- Dokumente & Signaturen ---------- */
+
+async function viewDokumente() {
+	const canManage = !!ME.caps['documents.manage'];
+	const docs = await api('/documents');
+	const targetOpts = canManage ? await api('/documents/targets').catch(() => null) : null;
+	const nodes = [lrPageHeader({ title: _t('Required documents'), lede: _t('Documents people must acknowledge or sign, e.g. privacy form or terms of use.') })];
+
+	const ruleSummary = (t, opts) => {
+		const parts = [];
+		if (t?.all) parts.push(_t('all persons'));
+		for (const s of t?.statuses || []) parts.push(opts?.statuses?.find(d => d.key === s)?.label || statusLabelOf(s));
+		for (const g of t?.nc_groups || []) parts.push((opts?.nc_groups?.find(x => x.gid === g)?.display || g) + ' (NC)');
+		return parts.join(', ');
+	};
+
+	const lv = listView({
+		scope: 'dokumente',
+		search: { placeholder: _t('Search documents …'), text: (d) => d.title },
+		sorts: [
+			{ key: 'title', label: _t('Title'), value: d => d.title },
+			{ key: 'signed', label: _t('Signed'), value: d => d.signed, dirs: [-1, 1], labelDesc: _t('Signed (asc)') },
+		],
+		headers: [_t('Title'), _t('Kind'), _t('Signed'), ''],
+		row: (d) => h('tr', {},
+			h('td', {}, h('a', { href: '#', onclick: (e) => { e.preventDefault(); expand(d); } }, d.title)),
+			h('td', {}, d.mode === 'file' ? _t('File (PDF/image)') : _t('Text'), d.required ? ' · ' + _t('required') : ''),
+			h('td', {}, `${d.signed}/${d.requests}`),
+			h('td', {}, menuButton(_t('Actions'), [
+				{ label: _t('Requests'), onclick: () => expand(d) },
+				...(canManage ? [{ label: _t('Delete'), danger: true, onclick: async () => {
+					if (!confirm(_t('Delete document “{title}” with all requests and signatures?', { title: d.title }))) return;
+					try { await api('/documents/' + d.id, { method: 'DELETE' }); toast(_t('Deleted'), false); viewDokumente(); }
+					catch (e) { toast(e.message); }
+				} }] : []),
+			]))),
+		empty: _t('No documents yet.'),
+	});
+	lv.setRows(docs);
+
+	const detail = h('div', {});
+	const expand = async (d) => {
+		const full = await api('/documents/' + d.id);
+		detail.textContent = '';
+		const reqs = full.requests || [];
+		const reqRows = h('tbody', {}, ...reqs.map(r =>
+			docReqRow(r, rr => h('td', {}, h('a', { href: '#/adressen/' + rr.person_id }, rr.person_name)), canManage, () => expand(d))));
+
+		const parts = [
+			d.body_text ? h('div', { class: 'lr-doctext' }, d.body_text) : null,
+			d.file_id ? h('p', {}, h('a', { href: OC.generateUrl('/apps/leiterrunde/api/documents/' + d.id + '/file'), target: '_blank' }, _t('Open document file'))) : null,
+			h('h3', {}, _t('Requests')),
+			reqs.length ? h('table', { class: 'lr-table' }, h('thead', {}, h('tr', {}, h('th', {}, _t('Person')), h('th', {}, _t('Status')), h('th', {}, _t('Signed at')), h('th', {}, _t('Method')), h('th', {}, _t('Signature')), h('th', {}, ''))), reqRows) : h('p', { class: 'lr-muted' }, _t('No requests yet.')),
+		];
+		const spec = full.target || {};
+		if (ruleSummary(spec, targetOpts)) {
+			parts.push(h('p', { class: 'lr-small lr-muted' },
+				_t('Auto-request: {rule} (also for people added later)', { rule: ruleSummary(spec, targetOpts) }),
+				canManage ? [' ', h('button', { class: 'lr-btn quiet', onclick: async () => {
+					try { await api('/documents/' + d.id + '/requests', { method: 'POST', json: { target: null } }); toast(_t('Rule removed'), false); expand(d); }
+					catch (e) { toast(e.message); }
+				} }, _t('Remove rule'))] : null));
+		}
+
+		if (canManage) {
+			const persons = await api('/persons/options').catch(() => []);
+			const requested = new Set(reqs.map(r => r.person_id));
+			const selectable = persons.filter(pp => !requested.has(pp.id));
+			const picked = new Map();
+			const chips = h('div', { class: 'lr-picked' });
+			const addPick = (pp) => {
+				if (!pp || picked.has(pp.id)) return;
+				picked.set(pp.id, pp);
+				const chip = h('span', { class: 'lr-chip' }, pp.last_name + ', ' + pp.first_name,
+					h('button', { type: 'button', class: 'lr-chip-x', 'aria-label': _t('Remove'), onclick: () => { picked.delete(pp.id); chip.remove(); } }, '×'));
+				chips.append(chip);
+			};
+			const sel = h('select', { 'aria-label': _t('Person') }, h('option', { value: '' }, _t('– choose person –')),
+				...selectable.map(pp => h('option', { value: pp.id }, pp.last_name + ', ' + pp.first_name)));
+			const picker = h('div', { class: 'lr-search' }, sel,
+				h('button', { class: 'lr-btn secondary', onclick: () => {
+					addPick(selectable.find(pp => pp.id === +sel.value)); sel.value = '';
+				} }, _t('Add')));
+
+			const cb = (labelTxt, extraClass) => {
+				const i = h('input', { type: 'checkbox' });
+				const l = h('label', { class: extraClass || 'lr-check' }, i, ' ', labelTxt);
+				return { i, l };
+			};
+			const allCb = cb(_t('All persons'));
+			const statusCbs = (targetOpts?.statuses || []).map(sd => ({ key: sd.key, ...cb(sd.label || sd.key) }));
+			const groupCbs = (targetOpts?.nc_groups || []).map(g => ({ key: g.gid, ...cb(g.display + ' (' + g.gid + ')') }));
+			parts.push(
+				h('h3', {}, _t('Request signatures from')),
+				picker, chips,
+				h('div', { class: 'lr-targets' },
+					h('h4', { class: 'lr-muted' }, _t('Or whole groups (applies automatically, also to people added later):')),
+					allCb.l,
+					statusCbs.length ? h('div', { class: 'lr-targets-row' }, h('span', { class: 'lr-muted' }, _t('Statuses:')), ...statusCbs.map(c => c.l)) : null,
+					groupCbs.length ? h('div', { class: 'lr-targets-row' }, h('span', { class: 'lr-muted' }, _t('Nextcloud groups:')), ...groupCbs.map(c => c.l)) : null),
+				h('button', { class: 'lr-btn', style: 'margin-top:8px', onclick: async () => {
+					const target = {
+						all: allCb.i.checked || undefined,
+						statuses: statusCbs.filter(c => c.i.checked).map(c => c.key),
+						nc_groups: groupCbs.filter(c => c.i.checked).map(c => c.key),
+					};
+					const hasTarget = target.all || target.statuses.length || target.nc_groups.length;
+					if (!picked.size && !hasTarget) { toast(_t('Select people or a group')); return; }
+					try {
+						const res = await api('/documents/' + d.id + '/requests', { method: 'POST', json: { person_ids: [...picked.keys()], ...(hasTarget ? { target } : {}) } });
+						toast(_t('{n} requests created', { n: res.created }), false);
+						expand(d);
+					} catch (e) { toast(e.message); }
+				} }, _t('Request signature')));
+		}
+		detail.append(lrSection({ title: d.title, aside: h('div', {}, ...parts) }));
+		enhanceTables(detail);
+		detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	};
+
+	if (canManage) {
+		const titleIn = h('input', { required: true, maxlength: 255 });
+		const bodyIn = h('textarea', { rows: 6, maxlength: 100000 });
+		const fileIn = h('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png,.heic' });
+		const modeSel = h('select', { onchange: () => { bodyWrap.style.display = modeSel.value === 'text' ? '' : 'none'; fileWrap.style.display = modeSel.value === 'file' ? '' : 'none'; } },
+			h('option', { value: 'text' }, _t('Text to accept')),
+			h('option', { value: 'file' }, _t('File (PDF/image)')));
+		const reqCb = h('input', { type: 'checkbox', checked: true });
+		const bodyWrap = field(_t('Document text (plain text)'), bodyIn, 12);
+		const fileWrap = field(_t('Document file'), fileIn, 12); fileWrap.style.display = 'none';
+		const form = h('div', { class: 'lr-form lr-formgrid' },
+			field(_t('Title'), titleIn, 6), field(_t('Kind'), modeSel, 6),
+			bodyWrap, fileWrap, checkField(_t('Required (must be signed)'), reqCb));
+		const docDraft = persistForm(form, 'doc-new');
+		nodes.push(lrSection({ title: _t('New document'), aside: h('div', {}, form,
+			formActions(h('button', { class: 'lr-btn', onclick: async () => {
+				if (!titleIn.value.trim()) { toast(_t('Title required')); return; }
+				try {
+					const d = await api('/documents', { method: 'POST', json: { title: titleIn.value.trim(), mode: modeSel.value, body_text: bodyIn.value || null, required: !!reqCb.checked } });
+					if (fileIn.files?.length) {
+						const fd = new FormData(); fd.append('file', fileIn.files[0]);
+						const res = await fetch(API + '/documents/' + d.id + '/file', { method: 'POST', headers: { 'requesttoken': OC.requestToken }, body: fd });
+						const data = await res.json().catch(() => ({}));
+						if (!res.ok) throw new Error(data.error || _t('Error') + ' ' + res.status);
+					}
+					docDraft.clear(); toast(_t('Created'), false); viewDokumente();
+				} catch (e) { toast(e.message); }
+			} }, _t('Create document')))) }));
+	}
+
+	nodes.push(lv.el, detail);
+	view(...nodes);
+}
+
+/* ---------- Konto-Zuordnung ---------- */
+
+async function viewKontomapping() {
+	const rows = await api('/persons/map-accounts');
+	const nodes = [lrPageHeader({ title: _t('Match accounts'), lede: _t('Links people to their Nextcloud account via an exact e-mail match. Links are saved permanently.') })];
+	if (!rows.length) {
+		nodes.push(emptyState(_t('All people with an e-mail address are already linked.')));
+		view(...nodes);
+		return;
+	}
+	const picks = new Map();
+	const tbody = h('tbody', {});
+	for (const r of rows) {
+		const sel = h('select', { 'aria-label': _t('Account for {name}', { name: r.name }), onchange: () => {
+			if (sel.value) picks.set(r.person_id, sel.value); else picks.delete(r.person_id);
+		} },
+			h('option', { value: '' }, r.matches.length ? _t('– choose –') : _t('No account found')),
+			...r.matches.map(m => h('option', { value: m.uid, selected: r.matches.length === 1 }, m.display_name + ' (' + m.uid + ')')));
+		if (r.matches.length === 1) picks.set(r.person_id, r.matches[0].uid);
+		tbody.append(h('tr', {},
+			h('td', {}, h('a', { href: '#/adressen/' + r.person_id }, r.name)),
+			h('td', {}, r.email),
+			h('td', {}, sel)));
+	}
+	nodes.push(h('table', { class: 'lr-table' },
+		h('thead', {}, h('tr', {}, h('th', {}, _t('Person')), h('th', {}, _t('E-mail')), h('th', {}, _t('Nextcloud account')))), tbody),
+		h('button', { class: 'lr-btn', style: 'margin-top:8px', onclick: async () => {
+			if (!picks.size) { toast(_t('Nothing to apply')); return; }
+			try {
+				const res = await api('/persons/map-accounts', { method: 'POST', json: { pairs: [...picks.entries()].map(([person_id, uid]) => ({ person_id, uid })) } });
+				toast(_t('{n} accounts linked', { n: res.applied }) + (res.errors?.length ? ' · ' + _t('{n} failed', { n: res.errors.length }) : ''), !!res.errors?.length);
+				viewKontomapping();
+			} catch (e) { toast(e.message); }
+		} }, _t('Apply links')));
 	view(...nodes);
 }
 

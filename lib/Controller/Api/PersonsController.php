@@ -16,6 +16,7 @@ use OCA\Leiterrunde\Db\PersonMapper;
 use OCA\Leiterrunde\Exception\ApiException;
 use OCA\Leiterrunde\Exception\NotFoundException;
 use OCA\Leiterrunde\Service\AuditService;
+use OCA\Leiterrunde\Service\DocumentTargetService;
 use OCA\Leiterrunde\Service\PermissionService;
 use OCA\Leiterrunde\Service\PersonCsvParser;
 use OCA\Leiterrunde\Service\PersonRules;
@@ -57,6 +58,7 @@ class PersonsController extends ApiController {
 		private PersonRules $rules,
 		private \OCA\Leiterrunde\Service\PersonFieldsService $personFields,
 		private SettingsService $settings,
+		private DocumentTargetService $docTargets,
 	) {
 		parent::__construct(Application::APP_ID, $request, $logger);
 	}
@@ -121,6 +123,7 @@ class PersonsController extends ApiController {
 			$p->setUpdatedAt(time());
 			$p = $this->mapper->insert($p);
 			$this->audit->diff('person', $p->getId(), null, ['_action' => 'created']);
+			$this->docTargets->syncPerson($p);
 			return new JSONResponse($this->withUser($p), Http::STATUS_CREATED);
 		});
 	}
@@ -164,6 +167,7 @@ class PersonsController extends ApiController {
 			$p->setUpdatedAt(time());
 			$p = $this->mapper->update($p);
 			$this->audit->diff('person', $p->getId(), $before, $p->jsonSerialize());
+			$this->docTargets->syncPerson($p);
 			return $this->withUser($p);
 		});
 	}
@@ -325,6 +329,7 @@ class PersonsController extends ApiController {
 					$person->setUpdatedAt(time());
 					$person = $this->mapper->update($person);
 					$this->audit->diff('person', $person->getId(), $before, $person->jsonSerialize());
+					$this->docTargets->syncPerson($person);
 					$updated++;
 				} else {
 					$person = new Person();
@@ -336,6 +341,7 @@ class PersonsController extends ApiController {
 					$person->setUpdatedAt(time());
 					$person = $this->mapper->insert($person);
 					$this->audit->diff('person', $person->getId(), null, ['_action' => 'created']);
+					$this->docTargets->syncPerson($person);
 					$created++;
 				}
 			} catch (\Throwable $e) {
@@ -416,6 +422,81 @@ class PersonsController extends ApiController {
 		return $this->wrap(function () {
 			$this->perm->require('persons.read');
 			return $this->personFields->definitions();
+		});
+	}
+
+	/** Dry-run: unlinked persons with an email, and matching NC accounts by exact email. */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function mapAccounts(): JSONResponse {
+		return $this->wrap(function () {
+			$this->perm->require('persons.write');
+			$out = [];
+			foreach ($this->mapper->findAll(null, null, 2000) as $p) {
+				if ($p->getNcUserId() !== null || !$p->getEmail()) {
+					continue;
+				}
+				$matches = [];
+				foreach ($this->userManager->getByEmail($p->getEmail()) as $u) {
+					if (mb_strtolower((string)$u->getEMailAddress()) === mb_strtolower($p->getEmail())) {
+						$matches[] = ['uid' => $u->getUID(), 'display_name' => $u->getDisplayName()];
+					}
+				}
+				$out[] = [
+					'person_id' => $p->getId(),
+					'name' => $p->getLastName() . ', ' . $p->getFirstName(),
+					'email' => $p->getEmail(),
+					'matches' => $matches,
+				];
+			}
+			return $out;
+		});
+	}
+
+	/** Apply the exact-email mapping; only unambiguous single matches are persisted. */
+	#[NoAdminRequired]
+	public function saveMapAccounts(?array $pairs = null): JSONResponse {
+		return $this->wrap(function () use ($pairs) {
+			$this->perm->require('persons.write');
+			if (!is_array($pairs) || $pairs === [] || count($pairs) > 2000) {
+				throw new ApiException('pairs: 1–2000 entries required', 422);
+			}
+			$applied = 0;
+			$errors = [];
+			foreach ($pairs as $pair) {
+				$pid = (int)($pair['person_id'] ?? 0);
+				$uid = trim((string)($pair['uid'] ?? ''));
+				try {
+					$p = $this->mapper->find($pid);
+					$email = $p->getEmail();
+					if ($email === null || $email === '') {
+						throw new ApiException('Person has no email', 422);
+					}
+					$candidate = false;
+					foreach ($this->userManager->getByEmail($email) as $u) {
+						if ($u->getUID() === $uid && mb_strtolower((string)$u->getEMailAddress()) === mb_strtolower($email)) {
+							$candidate = true;
+							break;
+						}
+					}
+					if (!$candidate) {
+						throw new ApiException('Not an email match for this person', 422);
+					}
+					$this->rules->assertUserLinkable($p, $uid);
+					$before = $p->jsonSerialize();
+					$p->setNcUserId($uid);
+					$p->setUpdatedAt(time());
+					$this->mapper->update($p);
+					$this->audit->diff('person', $p->getId(), $before, $p->jsonSerialize());
+					$this->docTargets->syncPerson($p);
+					$applied++;
+				} catch (\OCP\AppFramework\Db\DoesNotExistException) {
+					$errors[] = ['person_id' => $pid, 'message' => 'Person not found'];
+				} catch (\Throwable $e) {
+					$errors[] = ['person_id' => $pid, 'message' => $e->getMessage()];
+				}
+			}
+			return ['applied' => $applied, 'errors' => $errors];
 		});
 	}
 

@@ -29,6 +29,7 @@ class Application extends App implements IBootstrap {
 		$context->registerNotifierService(Notifier::class);
 		$context->registerDashboardWidget(\OCA\Leiterrunde\Dashboard\GeburtstageWidget::class);
 		$context->registerEventListener(RegisterModulesEvent::class, \OCA\Leiterrunde\Listener\RegisterCoreModules::class);
+		$context->registerEventListener(\OCP\Group\Events\UserAddedEvent::class, \OCA\Leiterrunde\Listener\SyncDocRequestsOnGroupJoin::class);
 	}
 
 	public function boot(IBootContext $context): void {

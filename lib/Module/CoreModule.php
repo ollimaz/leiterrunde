@@ -42,12 +42,18 @@ class CoreModule implements IModule {
 			new CapabilityDefinition('persons.import', 'Import people', 'Core', ['admin']),
 			new CapabilityDefinition('persons.delete', 'Delete people', 'Core', ['vorstand', 'admin']),
 			new CapabilityDefinition('audit.read', 'Read change log', 'Core', ['vorstand', 'admin']),
+			new CapabilityDefinition('documents.view', 'View required documents', 'Core', ['vorstand', 'admin']),
+			new CapabilityDefinition('documents.manage', 'Manage required documents', 'Core', ['vorstand', 'admin']),
 			new CapabilityDefinition('settings.manage', 'Manage settings', 'Core', ['admin', 'nca']),
 		];
 	}
 
 	public function getDocumentTypes(): array {
-		return [];
+		return [
+			new DocumentType('dokument', 'Required documents',
+				'Leiterrunde/Dokumente/{jahr}',
+				['jahr', 'monat', 'datum', 'vorname', 'nachname', 'id']),
+		];
 	}
 
 	public function getOverviewTiles(IUser $user): array {

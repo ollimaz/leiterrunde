@@ -10,7 +10,8 @@ declare(strict_types=1);
 // minimale OCP-Stubs für Unit-Tests ohne Nextcloud-Bootstrap
 if (!interface_exists(\OCP\IAppConfig::class)) {
 	eval('namespace OCP; interface IAppConfig { public function getValueString(string $app, string $key, string $default = "", bool $lazy = false): string; public function setValueString(string $app, string $key, string $value, bool $sensitive = false): void; }');
-	eval('namespace OCP; interface IGroupManager { public function groupExists(string $gid): bool; }');
+	eval('namespace OCP; interface IGroup { public function getGID(): string; public function getDisplayName(): string; public function getUsers(): array; }');
+	eval('namespace OCP; interface IGroupManager { public function groupExists(string $gid): bool; public function isInGroup(string $uid, string $gid): bool; public function get(string $gid): ?\\OCP\\IGroup; public function search(string $search = ""): array; }');
 	eval('namespace OCP\\AppFramework; class App {}');
 	eval('namespace OCP\\AppFramework\\Bootstrap; interface IBootstrap {} interface IRegistrationContext {} interface IBootContext {}');
 	eval('namespace OCP\EventDispatcher; class Event {} interface IEventDispatcher { public function dispatchTyped(object $event): void; }');
@@ -34,6 +35,8 @@ if (!class_exists(\OCP\AppFramework\Db\QBMapper::class)) {
 		public $id;
 		public function getId() { return $this->id; }
 		public function setId($id): void { $this->id = $id; }
+		public function addType(string $name, string $type): void {}
+		public function markFieldUpdated(string $attribute): void {}
 		public function __call(string $m, array $a) {
 			$p = lcfirst(substr($m, 3));
 			if (str_starts_with($m, "get")) { return $this->$p; }

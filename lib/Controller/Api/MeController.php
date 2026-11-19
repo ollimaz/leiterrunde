@@ -11,6 +11,7 @@ namespace OCA\Leiterrunde\Controller\Api;
 
 use OCA\Leiterrunde\AppInfo\Application;
 use OCA\Leiterrunde\Service\PermissionService;
+use OCA\Leiterrunde\Service\PersonFieldsService;
 use OCA\Leiterrunde\Service\SettingsService;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -26,6 +27,7 @@ class MeController extends ApiController {
 		private PermissionService $perm,
 		private IAppManager $appManager,
 		private SettingsService $settings,
+		private PersonFieldsService $personFields,
 	) {
 		parent::__construct(Application::APP_ID, $request, $logger);
 	}
@@ -47,6 +49,7 @@ class MeController extends ApiController {
 					['leiterrunde_schulungen', 'leiterrunde_finanzen', 'leiterrunde_veranstaltungen', 'leiterrunde_messdienerplan'],
 					fn ($a) => $this->appManager->isEnabledForAnyone($a))),
 				'person' => $person?->jsonSerialize(),
+				'field_defs' => $this->personFields->definitions(),
 				'statuses' => $this->settings->personStatuses(),
 				'status_defs' => $this->settings->personStatusDefs(),
 			];

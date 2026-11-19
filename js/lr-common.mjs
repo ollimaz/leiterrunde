@@ -104,6 +104,7 @@ const ICONS = {
 	'arrow-left': 'M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z',
 	'dots-vertical': 'M12,16A2,2 0 0,1 14,18A2,2 0 0,1 12,20A2,2 0 0,1 10,18A2,2 0 0,1 12,16M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10M12,4A2,2 0 0,1 14,6A2,2 0 0,1 12,8A2,2 0 0,1 10,6A2,2 0 0,1 12,4Z',
 	'file': 'M13,9V3.5L18.5,9M6,2C4.89,2 4,2.89 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2H6Z',
+	'files': 'M15,7H20.5L15,1.5V7M8,0H16L22,6V18A2,2 0 0,1 20,20H8C6.89,20 6,19.1 6,18V2A2,2 0 0,1 8,0M4,4V22H20V24H4A2,2 0 0,1 2,22V4H4Z',
 	'sync': 'M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z',
 	'open-in-new': 'M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z',
 	'upload': 'M9,16V10H5L12,3L19,10H15V16M5,20V18H19V20H5Z',
@@ -167,6 +168,209 @@ export function setupMobileNav(root) {
  * mountApp({ appId, title, nav: [{route,label,cap,section,icon}], routes: {hash: fn}, defaultRoute })
  * Rendert NC-Layout: #app-navigation links, #app-content rechts.
  */
+
+/* ---- per-tab view state (sorting, filters, scroll, form drafts) ---- */
+
+let _lrVs = null;
+function _lrVsLoad() {
+	if (_lrVs !== null) return _lrVs;
+	try { _lrVs = JSON.parse(sessionStorage.getItem('lr-viewstate') || '{}'); }
+	catch { _lrVs = {}; }
+	return _lrVs;
+}
+function _lrVsSave() {
+	try { sessionStorage.setItem('lr-viewstate', JSON.stringify(_lrVs)); } catch { /* quota */ }
+}
+
+/**
+ * Scoped, session-persisted key/value store. Use a distinct scope per view,
+ * e.g. viewState('leiterrunde.adressen'). get() returns the stored object (or {}).
+ */
+export function viewState(scope) {
+	_lrVsLoad();
+	return {
+		get: () => _lrVs[scope] || {},
+		set: (patch) => { _lrVs[scope] = { ...(_lrVs[scope] || {}), ...patch }; _lrVsSave(); },
+		clear: () => { delete _lrVs[scope]; _lrVsSave(); },
+	};
+}
+
+const _lrScrollKey = (hash) => 'scroll:' + (hash || '#/');
+let _lrLastHash = null;
+
+/** Save the current scroll position under the route that is about to be left. */
+export function saveScroll() {
+	_lrVsLoad();
+	const st = { y: window.scrollY };
+	_lrVs[_lrScrollKey(_lrLastHash)] = st;
+	_lrVsSave();
+}
+
+/** Restore the scroll position stored for the current route, if any. */
+export function restoreScroll() {
+	_lrVsLoad();
+	const st = _lrVs[_lrScrollKey(location.hash)] || _lrVs[_lrScrollKey(null)];
+	if (st) requestAnimationFrame(() => window.scrollTo(0, st.y || 0));
+	else window.scrollTo(0, 0);
+	_lrLastHash = location.hash;
+}
+
+/**
+ * Keep a form's draft values in the view-state store: restores on call and
+ * saves on every input event (file/password inputs are skipped). Call the
+ * returned clear() after a successful save.
+ */
+export function persistForm(form, key) {
+	const vs = viewState('form:' + key);
+	const fields = () => [...form.querySelectorAll('input,select,textarea')]
+		.filter(el => el.type !== 'file' && el.type !== 'password' && !el.dataset.nodraft && !el.closest('.lr-combo'));
+	const keyOf = (el, i) => el.dataset?.key || el.name || String(i);
+	const saved = vs.get().draft;
+	if (saved) {
+		fields().forEach((el, i) => {
+			const k = keyOf(el, i);
+			if (!(k in saved)) return;
+			if (el.type === 'checkbox') el.checked = !!saved[k];
+			else el.value = saved[k];
+			el.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+	}
+	form.addEventListener('input', () => {
+		const draft = {};
+		fields().forEach((el, i) => { draft[keyOf(el, i)] = el.type === 'checkbox' ? el.checked : el.value; });
+		vs.set({ draft });
+	});
+	return { clear: () => vs.set({ draft: null }) };
+}
+
+/**
+ * Collapse a set of actions into one dropdown button.
+ * items: [{label, onclick, danger?}] — or plain button elements, which are
+ * re-labelled into menu entries via their textContent and click handler.
+ */
+export function menuButton(label, items) {
+	const wrap = h('div', { class: 'lr-menuwrap' });
+	const menu = h('div', { class: 'lr-menu', role: 'menu' });
+	const close = () => {
+		menu.classList.remove('open');
+		btn.setAttribute('aria-expanded', 'false');
+		document.removeEventListener('click', onDocClick);
+		window.removeEventListener('scroll', onScroll, true);
+		window.removeEventListener('resize', onScroll);
+	};
+	const onDocClick = (e) => { if (!wrap.contains(e.target) && !menu.contains(e.target)) close(); };
+	const onScroll = () => close();
+	const place = () => {
+		menu.classList.add('open');
+		const r = btn.getBoundingClientRect();
+		const mw = menu.offsetWidth, mh = menu.offsetHeight;
+		menu.style.position = 'fixed';
+		menu.style.top = Math.max(8, Math.min(r.bottom + 4, window.innerHeight - mh - 8)) + 'px';
+		menu.style.left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8)) + 'px';
+		menu.style.right = 'auto';
+	};
+	const btn = h('button', {
+		class: 'lr-btn secondary', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+		onclick: (e) => {
+			e.stopPropagation();
+			const open = !menu.classList.contains('open');
+			if (!open) { close(); return; }
+			place();
+			btn.setAttribute('aria-expanded', 'true');
+			document.addEventListener('click', onDocClick);
+			window.addEventListener('scroll', onScroll, true);
+			window.addEventListener('resize', onScroll);
+		},
+	}, label, ' ', icon('dots-vertical'));
+	for (const it of items) {
+		if (it === null || it === undefined || it === false) continue;
+		if (it.nodeType === 1) {
+			const entry = h('button', { role: 'menuitem', class: 'lr-menu-item' });
+			entry.textContent = it.textContent;
+			entry.addEventListener('click', (e) => { close(); it.click(); });
+			menu.append(entry);
+		} else {
+			menu.append(h('button', {
+				role: 'menuitem',
+				class: 'lr-menu-item' + (it.danger ? ' danger' : ''),
+				onclick: (e) => { close(); it.onclick(e); },
+			}, it.label));
+		}
+	}
+	wrap.append(btn, menu);
+	return wrap;
+}
+
+/**
+ * Person-list style list: toolbar (search + filters + sort) above an .lr-table
+ * that auto-collapses to cards on narrow screens. When `scope` is given the
+ * toolbar state is restored on revisit (same tab).
+ *
+ * listView({
+ *   scope, search: {placeholder, text: (row)=>string},
+ *   filters: [{key, label, options:[{value,label}], apply:(row,val)=>bool}],
+ *   sorts: [{key, label, value:(row)=>string|number, dir}],
+ *   headers: [...th], row: (r)=>tr, empty: string|Node,
+ * })
+ */
+export function listView({ scope = null, search = null, filters = [], sorts = [], headers = [], row, empty = null }) {
+	const vs = scope ? viewState('list:' + scope) : null;
+	const state = vs ? vs.get() : {};
+	const toolbar = h('div', { class: 'lr-search' });
+	const persist = () => {
+		if (!vs) return;
+		vs.set({
+			q: searchEl?.value || '',
+			f: Object.fromEntries(filterEls.map(([f, sel]) => [f.key, sel.value])),
+			s: sortEl?.value || '',
+		});
+	};
+	const tbody = h('tbody', {});
+	const emptyEl = empty === null ? null
+		: (typeof empty === 'string' ? emptyState(empty) : empty);
+	const searchEl = search ? h('input', {
+		type: 'search', placeholder: search.placeholder || _t('Search …'),
+		value: state.q || '',
+		oninput: apply,
+	}) : null;
+	if (searchEl) toolbar.append(searchEl);
+	const filterEls = filters.map(f => {
+		const sel = h('select', { 'aria-label': f.label, onchange: apply },
+			...f.options.map(o => h('option', { value: o.value, selected: state.f?.[f.key] === o.value }, o.label)));
+		toolbar.append(sel);
+		return [f, sel];
+	});
+	const sortEl = sorts.length ? h('select', { 'aria-label': _t('Sort by'), onchange: apply },
+		...sorts.flatMap(s => (s.dirs || [1]).map(d =>
+			h('option', { value: s.key + ':' + d, selected: state.s === s.key + ':' + d }, d === 1 ? s.label : (s.labelDesc || s.label + ' ' + _t('(desc)'))))))
+		: null;
+	if (sortEl) toolbar.append(sortEl);
+	let rows = [];
+	function apply() {
+		let out = [...rows];
+		const q = (searchEl?.value || '').trim().toLowerCase();
+		if (q && search) out = out.filter(r => (search.text(r) || '').toLowerCase().includes(q));
+		for (const [f, sel] of filterEls) {
+			if (f.apply && sel.value !== '') out = out.filter(r => f.apply(r, sel.value));
+		}
+		if (sortEl) {
+			const [k, dir] = sortEl.value.split(':');
+			const s = sorts.find(x => x.key === k);
+			if (s) out.sort((a, b) => (+dir) * String(s.value(a) ?? '').localeCompare(String(s.value(b) ?? ''), lrLocale(), { numeric: true }));
+		}
+		tbody.textContent = '';
+		for (const r of out) tbody.append(row(r));
+		if (emptyEl) emptyEl.style.display = out.length ? 'none' : '';
+		persist();
+	}
+	const table = h('table', { class: 'lr-table' },
+		h('thead', {}, h('tr', {}, ...headers.map(hh => hh?.nodeType ? hh : h('th', {}, hh)))), tbody);
+	return {
+		el: h('div', {}, (searchEl || filterEls.length || sortEl) ? toolbar : null, table, emptyEl),
+		setRows(r) { rows = r || []; apply(); },
+		apply,
+	};
+}
 
 /* ---- combobox ---- */
 export function combobox({ search, value = null, placeholder = '', onChange, minChars = 1 }) {
@@ -345,10 +549,12 @@ export function mountApp({ appId, title, nav, routes, defaultRoute, navigationHe
 		const hash = location.hash || start;
 		const target = routes[hash] || routes[hash.split('/').slice(0, -1).join('/')] || routes[defaultRoute];
 		const v = document.getElementById('lr-view');
+		saveScroll();
 		v.textContent = '';
 		v.append(skeleton());
 		try {
 			await target(v, ME, { h, api: (p, o) => api(appId, p, o), coreApi: (p, o) => api('leiterrunde', p, o), badge, toast, formatDate, formatMoney });
+			restoreScroll();
 		} catch (e) {
 			toast(e.message);
 		} finally {
@@ -461,7 +667,7 @@ function _initResponsiveTables() {
 }
 _initResponsiveTables();
 
-window.LeiterrundeUI = { field, checkField, formActions, combobox, BADGE_LABELS, userPicker, personPicker, h, api, badge, toast, formatDate, formatMoney, mountApp, me, put, appUrl, lrPageHeader, lrSection, lrFigures, renderChart, l10n, lrLocale, icon, skeleton, emptyState, setupMobileNav, enhanceTables };
+window.LeiterrundeUI = { field, checkField, formActions, combobox, BADGE_LABELS, userPicker, personPicker, h, api, badge, toast, formatDate, formatMoney, mountApp, me, put, appUrl, lrPageHeader, lrSection, lrFigures, renderChart, l10n, lrLocale, icon, skeleton, emptyState, setupMobileNav, enhanceTables, viewState, saveScroll, restoreScroll, persistForm, menuButton, listView };
 
 const css = (v) => getComputedStyle(document.querySelector('.lr') || document.documentElement).getPropertyValue(v).trim() || '#888';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
