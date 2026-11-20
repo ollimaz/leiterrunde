@@ -10,7 +10,18 @@
 	<name lang="de">Leiterrunde</name>
 	<summary>Management of people, training, finances and events for the leader team</summary>
 	<summary lang="de">Verwaltung von Adressen, Schulungen, Finanzen und Veranstaltungen für die Leiterrunde</summary>
-	<description><![CDATA[Interne Verwaltungs-App der Leiterrunde: Adressen, Schulungsnachweise (inkl. Führungszeugnisse), Finanzen (Kontoauszüge, Zahlungsverpflichtungen, Auslagen) sowie Veranstaltungen mit Anmelde-Sync zur öffentlichen Website.]]></description>
+	<description><![CDATA[Interne Verwaltungs-App der Leiterrunde.
+
+Zentrale Verwaltung für die gesamte Runde:
+
+• Personenverzeichnis mit Status, Funktionen, eigenen Feldern, CSV-Import und Zuordnung zu Nextcloud-Konten
+• Pflichtdokumente (z. B. Datenschutzformular oder Nutzungsbedingungen) mit Unterschrifts-Anforderung – unterschrieben wird per Zeichnen, Tippen oder Datei-Upload, inklusive Zielgruppen, Statusübersicht und Nachverfolgung
+• Schulungs- und Führungszeugnis-Status pro Person
+• Rechte- und Rollenverwaltung auf Basis von Nextcloud-Gruppen sowie vollständiges Änderungsprotokoll (Audit-Log)
+• Übersicht mit Kennzahlen und anstehenden Aufgaben aus allen Bereichen
+• „Mein Profil“ zeigt jeder Person ihre gesammelten Daten und ausstehenden Dokumente
+
+Die Modul-Apps Finanzen, Messdienerplan, Schulungen und Veranstaltungen ergänzen die Leiterrunde um ihre jeweiligen Bereiche und setzen diese App voraus.]]></description>
 	<version>0.0.8</version>
 	<licence>agpl</licence>
 	<author>Leiterrunde</author>
