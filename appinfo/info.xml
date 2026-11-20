@@ -22,7 +22,7 @@ Zentrale Verwaltung für die gesamte Runde:
 • „Mein Profil“ zeigt jeder Person ihre gesammelten Daten und ausstehenden Dokumente
 
 Die Modul-Apps Finanzen, Messdienerplan, Schulungen und Veranstaltungen ergänzen die Leiterrunde um ihre jeweiligen Bereiche und setzen diese App voraus.]]></description>
-	<version>0.0.8</version>
+	<version>0.0.9</version>
 	<licence>agpl</licence>
 	<author>Leiterrunde</author>
 	<namespace>Leiterrunde</namespace>
